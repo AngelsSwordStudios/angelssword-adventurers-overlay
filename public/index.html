@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AS Adventurer — MediaPipe + BrokeAss geometry (smile / frown / surprised).">
+  <meta name="description" content="AS Adventurer — MediaPipe + BrokeAss geometry (smile / frown / surprised / eyes).">
   <title>⚔ AS Adventurer — Control Panel (MediaPipe)</title>
   <link rel="stylesheet" href="control.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,7 +16,7 @@
         <img src="assets/Angelsword-Logo-white_25pct.webp" alt="Angel's Sword Studios" class="brand-logo">
         <div>
           <h1>AS Adventurer</h1>
-          <div class="brand-tagline">MediaPipe · BrokeAss smile / frown / surprised</div>
+          <div class="brand-tagline">MediaPipe · BrokeAss smile / frown / surprised / eyes</div>
         </div>
       </div>
       <div class="header-status">
@@ -42,8 +42,8 @@
             <div class="source-panel active" id="panel-webcam">
               <p class="help-text">
                 <strong>Webcam + MediaPipe</strong> with <strong>BrokeAss</strong> landmark geometry:<br>
-                😊 Smile = mouth corners · 😢 Frown = brow drop + corners down · 😮 Surprised = open mouth<br>
-                Gain × = 0.5–5.0 sensitivity (same as BrokeAss debug sliders).
+                😊 Smile · 😢 Frown · 😮 Surprised · 😑 Eyes closed<br>
+                Gain × = 0.5–5.0 sensitivity on each.
               </p>
               <button class="btn btn-primary" id="btn-start-webcam">Start Webcam</button>
               <button class="btn btn-secondary" id="btn-stop-webcam" style="display:none;">Stop Webcam</button>
@@ -107,7 +107,7 @@
           </div>
           <div class="card-body">
             <p class="help-text" style="margin-bottom:10px;">
-              Trigger levels (0–100). Prefer <strong>Gain ×</strong> under Live Tracking to tune sensitivity like BrokeAss.
+              Trigger levels (0–100). Prefer <strong>Gain ×</strong> under Live Tracking to tune sensitivity.
             </p>
             <div class="slider-group">
               <label>😊 Smile Threshold <span class="slider-value" id="val-smile">20</span></label>
@@ -221,8 +221,8 @@
               <span class="calib-status calib-default" id="calib-status">BrokeAss geometry — use Gain ×</span>
             </div>
             <p class="help-text calib-help">
-              <strong>× Gain</strong> = BrokeAss sensitivity (0.5×–5.0×) on smile, frown, and surprised.<br>
-              All three use landmark geometry (not raw blendshapes).
+              <strong>× Gain</strong> = sensitivity (0.5×–5.0×) for smile, frown, surprised, and eyes closed.<br>
+              All four use landmark geometry.
             </p>
 
             <div class="meters">
@@ -234,7 +234,7 @@
                 </div>
                 <div class="slider-group meter-gain">
                   <label>× <span class="slider-value" id="val-gain-smile">1.00x</span></label>
-                  <input type="range" min="0.5" max="5" step="0.05" value="1.0" id="gain-smile" title="BrokeAss smile sensitivity">
+                  <input type="range" min="0.5" max="5" step="0.05" value="1.0" id="gain-smile" title="Smile sensitivity">
                 </div>
               </div>
 
@@ -246,7 +246,7 @@
                 </div>
                 <div class="slider-group meter-gain">
                   <label>× <span class="slider-value" id="val-gain-frown">1.00x</span></label>
-                  <input type="range" min="0.5" max="5" step="0.05" value="1.0" id="gain-frown" title="BrokeAss frown sensitivity (brow drop + corners down)">
+                  <input type="range" min="0.5" max="5" step="0.05" value="1.0" id="gain-frown" title="Frown sensitivity">
                 </div>
               </div>
 
@@ -258,14 +258,20 @@
                 </div>
                 <div class="slider-group meter-gain">
                   <label>× <span class="slider-value" id="val-gain-surprised">1.00x</span></label>
-                  <input type="range" min="0.5" max="5" step="0.05" value="1.0" id="gain-surprised" title="BrokeAss open-mouth / surprised sensitivity">
+                  <input type="range" min="0.5" max="5" step="0.05" value="1.0" id="gain-surprised" title="Surprised / open-mouth sensitivity">
                 </div>
               </div>
 
-              <div class="meter-row">
-                <span class="meter-label">😑 Eyes</span>
-                <div class="meter-bar"><div class="meter-fill eyes" id="meter-eyes" style="width:0%"></div></div>
-                <span class="meter-value" id="meter-eyes-val">0</span>
+              <div class="meter-block">
+                <div class="meter-row">
+                  <span class="meter-label">😑 Eyes Closed</span>
+                  <div class="meter-bar"><div class="meter-fill eyes" id="meter-eyes" style="width:0%"></div></div>
+                  <span class="meter-value" id="meter-eyes-val">0</span>
+                </div>
+                <div class="slider-group meter-gain">
+                  <label>× <span class="slider-value" id="val-gain-eyes">1.00x</span></label>
+                  <input type="range" min="0.5" max="5" step="0.05" value="1.0" id="gain-eyes" title="Eyes closed sensitivity (EAR geometry)">
+                </div>
               </div>
             </div>
           </div>
