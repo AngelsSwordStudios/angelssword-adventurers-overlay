@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════
 //  Gain sliders — BrokeAss style (0.5× – 5.0×)
-//  score = min(1, raw * mult) * 100  (applied in geometry)
+//  smile / frown / surprised / eyes
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -15,12 +15,14 @@
     smile: { slider: 'gain-smile', value: 'val-gain-smile' },
     frown: { slider: 'gain-frown', value: 'val-gain-frown' },
     surprised: { slider: 'gain-surprised', value: 'val-gain-surprised' },
+    eyes: { slider: 'gain-eyes', value: 'val-gain-eyes' },
   };
 
   window.AS_GAINS = {
     smile: DEFAULT_GAIN,
     frown: DEFAULT_GAIN,
     surprised: DEFAULT_GAIN,
+    eyes: DEFAULT_GAIN,
   };
 
   function loadSettings() {
@@ -61,16 +63,17 @@
       smile: clampGain(gains.smile),
       frown: clampGain(gains.frown),
       surprised: clampGain(gains.surprised),
+      eyes: clampGain(gains.eyes),
     };
     window.AS_GAINS.smile = g.smile;
     window.AS_GAINS.frown = g.frown;
     window.AS_GAINS.surprised = g.surprised;
+    window.AS_GAINS.eyes = g.eyes;
     saveSettings({ gains: { ...g } });
     for (const key of Object.keys(GAIN_IDS)) {
       const lab = document.getElementById(GAIN_IDS[key].value);
       if (lab) lab.textContent = formatGain(g[key]);
     }
-    // Keep server gain at 1 — client geometry applies sensitivity
     clearTimeout(commitGains._t);
     commitGains._t = setTimeout(async () => {
       try {
@@ -101,10 +104,10 @@
   function restoreGains() {
     const settings = loadSettings();
     const g = settings.gains || {};
-    const t = settings.thresholds || {};
-    applyGainToUI('smile', g.smile ?? t.smileGain ?? DEFAULT_GAIN);
-    applyGainToUI('frown', g.frown ?? t.frownGain ?? DEFAULT_GAIN);
-    applyGainToUI('surprised', g.surprised ?? t.surprisedGain ?? DEFAULT_GAIN);
+    applyGainToUI('smile', g.smile ?? DEFAULT_GAIN);
+    applyGainToUI('frown', g.frown ?? DEFAULT_GAIN);
+    applyGainToUI('surprised', g.surprised ?? DEFAULT_GAIN);
+    applyGainToUI('eyes', g.eyes ?? DEFAULT_GAIN);
     commitGains(readSliders());
   }
 
@@ -119,9 +122,11 @@
         const gains = readSliders();
         commitGains(gains);
         console.log(
-          '[gain] BrokeAss sens',
+          '[gain]',
           gains.smile.toFixed(2) + 'x smile /',
-          gains.surprised.toFixed(2) + 'x mouth'
+          gains.frown.toFixed(2) + 'x frown /',
+          gains.surprised.toFixed(2) + 'x surprised /',
+          gains.eyes.toFixed(2) + 'x eyes'
         );
       });
     }
@@ -135,10 +140,12 @@
         applyGainToUI('smile', DEFAULT_GAIN);
         applyGainToUI('frown', DEFAULT_GAIN);
         applyGainToUI('surprised', DEFAULT_GAIN);
+        applyGainToUI('eyes', DEFAULT_GAIN);
         commitGains({
           smile: DEFAULT_GAIN,
           frown: DEFAULT_GAIN,
           surprised: DEFAULT_GAIN,
+          eyes: DEFAULT_GAIN,
         });
       }, 80);
     });
@@ -150,7 +157,7 @@
     wireReset();
     restoreGains();
     window.AS_getGains = () => ({ ...window.AS_GAINS });
-    console.log('[gain] BrokeAss sensitivity 0.5–5.0× ready', window.AS_GAINS);
+    console.log('[gain] smile/frown/surprised/eyes 0.5–5.0× ready', window.AS_GAINS);
   }
 
   if (document.readyState === 'loading') {
