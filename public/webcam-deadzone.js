@@ -1,31 +1,32 @@
 // ═══════════════════════════════════════════════════
 //  AS Adventurer — Webcam neutral deadzone
 //  MediaPipe still returns small mouthSmile/cheekSquint
-//  values on a relaxed face (~10–18). After gain (e.g.
-//  3.8×) that becomes ~50 and false-triggers Happy.
-//  We subtract a resting floor from those blendshapes
-//  before they hit the server scoring pipeline.
+//  / browDown values on a relaxed face (~10–18). After
+//  gain (e.g. 3.8×) that becomes ~50 and false-triggers
+//  Happy or Sad. We subtract a resting floor from those
+//  blendshapes before they hit the server scoring pipeline.
 // ═══════════════════════════════════════════════════
 
 (() => {
   'use strict';
 
   // Values are on the 0–100 scale used by control.js (score * 100).
-  // Tuned so a typical neutral face → ~0 smile after composite + gain.
+  // Tuned so a typical neutral face → ~0 smile/frown after composite + gain.
   const FLOORS = {
-    // Smile contributors
+    // Smile contributors (same strength as before)
     mouthSmileLeft: 12,
     mouthSmileRight: 12,
     cheekSquintLeft: 14,
     cheekSquintRight: 14,
     eyeSquintLeft: 8,
     eyeSquintRight: 8,
-    // Frown contributors
-    browDownLeft: 8,
-    browDownRight: 8,
-    browInnerUp: 8,
-    mouthFrownLeft: 8,
-    mouthFrownRight: 8,
+    // Frown contributors — matched to smile strength so resting
+    // brow tension doesn't read as sad after gain
+    browDownLeft: 14,
+    browDownRight: 14,
+    browInnerUp: 12,
+    mouthFrownLeft: 12,
+    mouthFrownRight: 12,
     // Surprised contributors
     eyeWideLeft: 6,
     eyeWideRight: 6,
@@ -67,5 +68,5 @@
     return origSend.call(this, data);
   };
   proto.__asDeadzonePatched = true;
-  console.log('[deadzone] Webcam neutral floors active (smile resting bias removed)');
+  console.log('[deadzone] Webcam neutral floors active (smile + frown resting bias removed)');
 })();
