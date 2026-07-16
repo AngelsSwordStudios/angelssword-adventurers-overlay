@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════
 //  Pipeline: optional floors + live gain
-//  When BrokeAss geometry is present (_geometry=1),
-//  smile / frown / surprised are already sensitivity-
-//  scaled — do NOT multiply again.
+//  When geometry is present (_geometry=1),
+//  smile / frown / surprised / eyes are already
+//  sensitivity-scaled — do NOT multiply again.
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -118,7 +118,6 @@
     if (!map || typeof map !== 'object') return map;
     const out = { ...map };
 
-    // BrokeAss geometry: smile/frown/surprised already have sensitivity
     const geometryMode = !!out._geometry;
 
     for (const [k, floor] of Object.entries(floors)) {
@@ -127,7 +126,6 @@
     }
 
     if (geometryMode) {
-      // No re-gain — geometry inject already applied × sliders
       return out;
     }
 
@@ -235,7 +233,7 @@
         statusEl.classList.add('calib-ok');
         statusEl.classList.remove('calib-default');
       } else {
-        statusEl.textContent = 'BrokeAss geometry — use Gain (×) sliders';
+        statusEl.textContent = 'Geometry — use Gain sliders';
         statusEl.classList.add('calib-default');
         statusEl.classList.remove('calib-ok');
       }
@@ -313,7 +311,7 @@
     window.AS_resetCalibration = resetCalibration;
     window.AS_getDeadzoneFloors = () => ({ ...floors, __calibrated: isCalibrated, __gains: readGains() });
     window.AS_readGains = readGains;
-    console.log('[pipeline] Ready — geometry skips re-gain for all three');
+    console.log('[pipeline] Ready — geometry skips re-gain');
   }
 
   if (document.readyState === 'loading') {
