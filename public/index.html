@@ -57,10 +57,25 @@
               </div>
               
               <div class="webcam-container" id="webcam-container" style="display:none; margin-top:12px;">
-                <video id="webcam-video" autoplay playsinline muted></video>
+                <div class="webcam-preview-wrap" id="webcam-preview-wrap">
+                  <video id="webcam-video" autoplay playsinline muted></video>
+                  <!-- Privacy overlay covers the video; tracking keeps using the video underneath -->
+                  <div class="webcam-privacy-overlay" id="webcam-privacy-overlay" style="display:none;" aria-hidden="true">
+                    <div class="webcam-privacy-inner">
+                      <span class="webcam-privacy-icon">🔒</span>
+                      <span class="webcam-privacy-text">Preview hidden</span>
+                      <span class="webcam-privacy-sub">Face tracking still active</span>
+                    </div>
+                  </div>
+                </div>
                 <canvas id="webcam-canvas" style="display:none;"></canvas>
-                <div style="margin-top:6px; font-size:12px; color:#64748b;">
-                  <span id="webcam-fps">—</span> · Face: <span id="webcam-face-status">—</span>
+                <div class="webcam-meta-row">
+                  <span class="webcam-meta-stats">
+                    <span id="webcam-fps">—</span> · Face: <span id="webcam-face-status">—</span>
+                  </span>
+                  <button type="button" class="webcam-preview-toggle" id="btn-toggle-webcam-preview" title="Hide camera preview for privacy (tracking stays on)">
+                    👁 Preview ON
+                  </button>
                 </div>
               </div>
             </div>
@@ -402,5 +417,6 @@
 
   <script src="control.js"></script>
   <script src="gain-sliders.js"></script>
+  <script src="webcam-privacy.js"></script>
 </body>
 </html>
