@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AS Adventurer — Reactive streaming overlay with face tracking and voice detection. By Angel's Sword Studios.">
-  <title>⚔ AS Adventurer — Control Panel</title>
+  <meta name="description" content="AS Adventurer — Reactive streaming overlay with face tracking and voice detection. MediaPipe-first edition. By Angel's Sword Studios.">
+  <title>⚔ AS Adventurer — Control Panel (MediaPipe)</title>
   <link rel="stylesheet" href="control.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cinzel+Decorative:wght@400;700&family=Outfit:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@
         <img src="assets/Angelsword-Logo-white_25pct.webp" alt="Angel's Sword Studios" class="brand-logo">
         <div>
           <h1>AS Adventurer</h1>
-          <div class="brand-tagline">Reactive Overlay · Angel's Sword Studios</div>
+          <div class="brand-tagline">MediaPipe Edition · Reactive Overlay</div>
         </div>
       </div>
       <div class="header-status">
@@ -37,14 +37,39 @@
           </div>
           <div class="card-body">
             <div class="source-tabs">
-              <button class="source-tab active" data-source="vtube">VTube Studio</button>
+              <button class="source-tab active" data-source="webcam">Webcam (MediaPipe)</button>
+              <button class="source-tab" data-source="vtube">VTube Studio</button>
               <button class="source-tab" data-source="ifacial">iFacialMocap</button>
-              <button class="source-tab" data-source="webcam">Webcam</button>
             </div>
 
-            <!-- VTube Studio -->
-            <div class="source-panel active" id="panel-vtube">
-              <p class="help-text">Enter your iPhone's IP address. Make sure "3rd Party PC Clients" is enabled in VTube Studio on your phone.</p>
+            <!-- Webcam (MediaPipe) — PRIMARY / DEFAULT -->
+            <div class="source-panel active" id="panel-webcam">
+              <p class="help-text">
+                <strong>Recommended — no phone or extra apps needed.</strong><br>
+                Uses Google MediaPipe Face Landmarker running entirely in your browser.
+                Your face data never leaves this machine.
+              </p>
+              <button class="btn btn-primary" id="btn-start-webcam">Start Webcam</button>
+              <button class="btn btn-secondary" id="btn-stop-webcam" style="display:none;">Stop Webcam</button>
+              
+              <div class="webcam-status" id="webcam-status" style="margin-top:10px; font-size:13px; color:#94a3b8;">
+                Status: Idle
+              </div>
+              
+              <div class="webcam-container" id="webcam-container" style="display:none; margin-top:12px;">
+                <video id="webcam-video" autoplay playsinline muted></video>
+                <canvas id="webcam-canvas" style="display:none;"></canvas>
+                <div style="margin-top:6px; font-size:12px; color:#64748b;">
+                  <span id="webcam-fps">—</span> · Face: <span id="webcam-face-status">—</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- VTube Studio (optional) -->
+            <div class="source-panel" id="panel-vtube">
+              <p class="help-text">
+                <strong>Optional advanced mode.</strong> Requires VTube Studio on an iPhone + same Wi-Fi network.
+              </p>
               <div class="input-group">
                 <label>iPhone IP Address</label>
                 <div class="input-row">
@@ -55,9 +80,11 @@
               <div class="connection-status" id="vts-status"></div>
             </div>
 
-            <!-- iFacialMocap -->
+            <!-- iFacialMocap (optional) -->
             <div class="source-panel" id="panel-ifacial">
-              <p class="help-text">Enter your iPhone's IP address. Make sure iFacialMocap is running and your PC's IP is set as the destination.</p>
+              <p class="help-text">
+                <strong>Optional advanced mode.</strong> Requires iFacialMocap on an iPhone.
+              </p>
               <div class="input-group">
                 <label>iPhone IP Address</label>
                 <div class="input-row">
@@ -67,21 +94,10 @@
               </div>
               <div class="connection-status" id="ifacial-status"></div>
             </div>
-
-            <!-- Webcam -->
-            <div class="source-panel" id="panel-webcam">
-              <p class="help-text">Use your webcam for face tracking. The camera feed stays here — it will NOT appear in OBS.</p>
-              <button class="btn btn-primary" id="btn-start-webcam">Start Webcam</button>
-              <button class="btn btn-secondary" id="btn-stop-webcam" style="display:none;">Stop</button>
-              <div class="webcam-container" id="webcam-container" style="display:none;">
-                <video id="webcam-video" autoplay playsinline muted></video>
-                <canvas id="webcam-canvas"></canvas>
-              </div>
-            </div>
           </div>
         </div>
 
-        <!-- Thresholds Card -->
+        <!-- Thresholds Card (unchanged) -->
         <div class="card">
           <div class="card-header">
             <h2>🎚️ Expression Thresholds</h2>
@@ -187,7 +203,7 @@
         </div>
       </div>
 
-      <!-- Right Column: Live Preview & Assets -->
+      <!-- Right Column remains the same as original -->
       <div class="column">
 
         <!-- Mic Detection Card -->
