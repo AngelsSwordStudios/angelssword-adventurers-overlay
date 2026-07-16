@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════
 //  AS Adventurer — Control Panel Logic
+//  MediaPipe-first edition
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -102,7 +103,7 @@
     const sourceNames = {
       vtube_studio: 'VTube Studio',
       ifacialmocap: 'iFacialMocap',
-      webcam: 'Webcam'
+      webcam: 'Webcam (MediaPipe)'
     };
     document.getElementById('tracking-source').textContent = sourceNames[data.source] || data.source;
 
@@ -200,39 +201,62 @@
     }
   });
 
-  // ── Webcam (MediaPipe fallback) ─────────────────
+  // ── Webcam (MediaPipe PRIMARY) ──────────────────
   let webcamStream = null;
   let webcamActive = false;
   let faceLandmarker = null;
+  let webcamFrameCount = 0;
+  let webcamLastFpsTime = 0;
+  let lastFaceDetected = false;
 
   document.getElementById('btn-start-webcam').addEventListener('click', startWebcam);
   document.getElementById('btn-stop-webcam').addEventListener('click', stopWebcam);
 
   async function startWebcam() {
+    const statusEl = document.getElementById('webcam-status');
+    const btn = document.getElementById('btn-start-webcam');
     try {
-      document.getElementById('btn-start-webcam').textContent = 'Loading MediaPipe...';
-      document.getElementById('btn-start-webcam').disabled = true;
+      btn.textContent = 'Loading MediaPipe...';
+      btn.disabled = true;
+      if (statusEl) {
+        statusEl.textContent = 'Status: Loading MediaPipe Face Landmarker...';
+        statusEl.style.color = '#94a3b8';
+      }
 
       // Load MediaPipe
       if (!faceLandmarker) {
         await loadMediaPipe();
       }
 
-      webcamStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      if (statusEl) statusEl.textContent = 'Status: Requesting camera access...';
+      webcamStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false
+      });
       const video = document.getElementById('webcam-video');
       video.srcObject = webcamStream;
       await video.play();
 
       document.getElementById('webcam-container').style.display = 'block';
-      document.getElementById('btn-start-webcam').style.display = 'none';
+      btn.style.display = 'none';
       document.getElementById('btn-stop-webcam').style.display = '';
 
       webcamActive = true;
+      webcamFrameCount = 0;
+      webcamLastFpsTime = performance.now();
+      if (statusEl) {
+        statusEl.textContent = 'Status: Tracking active ✓';
+        statusEl.style.color = '#4ade80';
+      }
       processWebcamFrame();
     } catch (e) {
       console.error('Webcam error:', e);
-      document.getElementById('btn-start-webcam').textContent = `Error: ${e.message}`;
-      document.getElementById('btn-start-webcam').disabled = false;
+      btn.textContent = 'Start Webcam';
+      btn.disabled = false;
+      if (statusEl) {
+        statusEl.textContent = `Status: Error — ${e.message}`;
+        statusEl.style.color = '#f87171';
+      }
     }
   }
 
@@ -247,27 +271,38 @@
     document.getElementById('btn-start-webcam').textContent = 'Start Webcam';
     document.getElementById('btn-start-webcam').disabled = false;
     document.getElementById('btn-stop-webcam').style.display = 'none';
+    const statusEl = document.getElementById('webcam-status');
+    if (statusEl) {
+      statusEl.textContent = 'Status: Idle';
+      statusEl.style.color = '#94a3b8';
+    }
+    const faceEl = document.getElementById('webcam-face-status');
+    if (faceEl) faceEl.textContent = '—';
+    const fpsEl = document.getElementById('webcam-fps');
+    if (fpsEl) fpsEl.textContent = '—';
   }
 
   async function loadMediaPipe() {
-    // Dynamically load MediaPipe vision module
-    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs');
+    // Pin to a stable version for reliability (instead of @latest)
+    const MEDIAPIPE_VERSION = '0.10.14';
+    const vision = await import(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`);
     const { FaceLandmarker, FilesetResolver } = vision;
 
     const filesetResolver = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
     );
 
     faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
       baseOptions: {
         modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-        delegate: 'GPU'
+        delegate: 'GPU'   // Falls back to CPU automatically if GPU unavailable
       },
       runningMode: 'VIDEO',
       numFaces: 1,
-      outputFaceBlendshapes: true
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: false
     });
-    console.log('[webcam] MediaPipe FaceLandmarker loaded');
+    console.log('[webcam] MediaPipe FaceLandmarker loaded (v' + MEDIAPIPE_VERSION + ')');
   }
 
   function processWebcamFrame() {
@@ -279,28 +314,54 @@
       return;
     }
 
-    const result = faceLandmarker.detectForVideo(video, performance.now());
+    const now = performance.now();
+    const result = faceLandmarker.detectForVideo(video, now);
+
+    // FPS counter
+    webcamFrameCount++;
+    if (now - webcamLastFpsTime >= 1000) {
+      const fps = webcamFrameCount;
+      webcamFrameCount = 0;
+      webcamLastFpsTime = now;
+      const fpsEl = document.getElementById('webcam-fps');
+      if (fpsEl) fpsEl.textContent = `${fps} FPS`;
+    }
 
     if (result.faceBlendshapes && result.faceBlendshapes.length > 0) {
       const blendshapes = result.faceBlendshapes[0].categories;
 
-      // Send ALL blendshapes to the server as raw tracking data.
-      // The server will apply the same composite scoring, thresholds,
-      // and hysteresis as VTube Studio / iFacialMocap sources.
+      // Build blendshape map in the format the server expects (0-100 scale)
       const blendShapeMap = {};
       for (const bs of blendshapes) {
-        // MediaPipe uses camelCase names — the server's get() helper handles both
-        // camelCase and VTS PascalCase, so these will be matched correctly.
-        // Multiply by 100 to match the 0-100 scale the server expects.
+        // MediaPipe uses camelCase (eyeBlinkLeft, etc.) — server already supports this
         blendShapeMap[bs.categoryName] = bs.score * 100;
       }
 
-      // Send as a webcam tracking packet (same format as UDP tracking)
+      // Face detected indicator
+      if (!lastFaceDetected) {
+        lastFaceDetected = true;
+        const faceEl = document.getElementById('webcam-face-status');
+        if (faceEl) {
+          faceEl.textContent = 'Detected ✓';
+          faceEl.style.color = '#4ade80';
+        }
+      }
+
+      // Send to server for expression detection (same pipeline as VTS)
       if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({
           type: 'webcam_tracking',
           blendShapes: blendShapeMap
         }));
+      }
+    } else {
+      if (lastFaceDetected) {
+        lastFaceDetected = false;
+        const faceEl = document.getElementById('webcam-face-status');
+        if (faceEl) {
+          faceEl.textContent = 'No face';
+          faceEl.style.color = '#f87171';
+        }
       }
     }
 
@@ -308,6 +369,8 @@
   }
 
   // ── Threshold Sliders ───────────────────────────
+  // (rest of the original file continues unchanged below)
+
   function setupSlider(id, valueId, formatFn, onChange) {
     const slider = document.getElementById(id);
     const valueEl = document.getElementById(valueId);
