@@ -9,10 +9,9 @@
 //  relaxed face — we snapshot current blendshapes and
 //  use those as your personal baseline (saved in localStorage).
 //
-//  NOTE: Frown signals from MediaPipe are weaker than smile
-//  (mouthFrown / browDown often only reach ~15–30 when sad).
-//  Floors for frown keys are kept lower so real frowns still
-//  survive deadzone + gain.
+//  Frown: MediaPipe mouthFrown / browDown are weaker than
+//  smile shapes. We use LOWER floors + a post-deadzone
+//  boost so real frowns still move the meter.
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -22,8 +21,6 @@
   const CAL_KEY = 'neutralCalibration';
 
   // Built-in floors when user has not calibrated yet (0–100 scale).
-  // Smile floors stay higher (resting smile bias is common).
-  // Frown floors stay LOW — MediaPipe sad shapes rarely go high.
   const DEFAULT_FLOORS = {
     // Smile (strong resting bias on many faces)
     mouthSmileLeft: 12,
@@ -47,8 +44,7 @@
     mouthFunnel: 5,
   };
 
-  // Max floor we ever allow from calibration (prevents a bad snapshot
-  // or high resting brow from permanently killing frown/smile).
+  // Hard caps on calibration floors (old snapshots may have been too high)
   const MAX_FLOOR = {
     mouthSmileLeft: 22,
     mouthSmileRight: 22,
@@ -56,7 +52,6 @@
     cheekSquintRight: 22,
     eyeSquintLeft: 16,
     eyeSquintRight: 16,
-    // Frown hard-capped lower
     browDownLeft: 10,
     browDownRight: 10,
     browInnerUp: 8,
@@ -75,7 +70,10 @@
     'mouthFrownLeft', 'mouthFrownRight',
   ]);
 
-  // Extra headroom only for smile-like resting noise
+  // After subtracting the floor, amplify residual frown energy so it
+  // competes with smile (MediaPipe sad range is smaller).
+  const FROWN_BOOST = 1.85;
+
   const CALIBRATE_PADDING_SMILE = 2;
   const CALIBRATE_PADDING_FROWN = 1;
   const CALIBRATE_PADDING_OTHER = 1;
@@ -110,7 +108,6 @@
     const s = loadSettings();
     const cal = s[CAL_KEY];
     if (cal && cal.floors && typeof cal.floors === 'object') {
-      // Re-clamp stored floors (older calibrations may have had high frown floors)
       const fixed = {};
       for (const [k, v] of Object.entries(cal.floors)) {
         fixed[k] = clampFloor(k, Number(v) || 0);
@@ -131,9 +128,13 @@
     if (!map || typeof map !== 'object') return map;
     const out = { ...map };
     for (const [k, floor] of Object.entries(floors)) {
-      if (out[k] !== undefined) {
-        out[k] = Math.max(0, Number(out[k]) - floor);
+      if (out[k] === undefined) continue;
+      let v = Math.max(0, Number(out[k]) - floor);
+      // Boost residual frown so it can fill meters like smile does
+      if (FROWN_KEYS.has(k) && v > 0) {
+        v = Math.min(100, v * FROWN_BOOST);
       }
+      out[k] = v;
     }
     return out;
   }
@@ -155,12 +156,14 @@
 
       let pad = CALIBRATE_PADDING_OTHER;
       if (FROWN_KEYS.has(key)) pad = CALIBRATE_PADDING_FROWN;
-      else if (key.indexOf('Smile') !== -1 || key.indexOf('Squint') !== -1 || key.indexOf('cheek') !== -1) {
+      else if (
+        key.indexOf('Smile') !== -1 ||
+        key.indexOf('Squint') !== -1 ||
+        key.indexOf('cheek') !== -1
+      ) {
         pad = CALIBRATE_PADDING_SMILE;
       }
 
-      // Only floor what's actually elevated at rest (ignore pure zeros)
-      // Still store a small floor so tiny noise stays quiet
       const rawFloor = v > 0.5 ? v + pad : pad * 0.5;
       snapshot[key] = clampFloor(key, rawFloor);
       count++;
@@ -174,10 +177,10 @@
     isCalibrated = true;
     calibratedAt = new Date().toISOString();
     saveSettings({
-      [CAL_KEY]: { floors: snapshot, at: calibratedAt, version: 2 },
+      [CAL_KEY]: { floors: snapshot, at: calibratedAt, version: 3 },
     });
 
-    console.log('[deadzone] Neutral calibrated (v2) from', count, 'shapes @', calibratedAt, snapshot);
+    console.log('[deadzone] Neutral calibrated (v3) from', count, 'shapes @', calibratedAt, snapshot);
     updateCalibUI();
     return {
       ok: true,
@@ -238,7 +241,6 @@
     }, 1800);
   }
 
-  // ── Patch WebSocket.send ─────────────────────────
   const proto = window.WebSocket && window.WebSocket.prototype;
   if (proto && !proto.__asDeadzonePatched) {
     const origSend = proto.send;
@@ -260,7 +262,6 @@
     proto.__asDeadzonePatched = true;
   }
 
-  // ── Wire UI ──────────────────────────────────────
   function initUI() {
     restoreCalibration();
 
@@ -290,7 +291,7 @@
     window.AS_resetCalibration = resetCalibration;
     window.AS_getDeadzoneFloors = () => ({ ...floors, __calibrated: isCalibrated });
 
-    console.log('[deadzone] Ready (calibrated=' + isCalibrated + ', frown-friendly floors)');
+    console.log('[deadzone] Ready (calibrated=' + isCalibrated + ', frown boost=' + FROWN_BOOST + ')');
   }
 
   if (document.readyState === 'loading') {
