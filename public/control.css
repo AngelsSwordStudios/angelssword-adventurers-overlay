@@ -497,6 +497,48 @@ input[type="range"]::-webkit-slider-thumb:hover {
   font-weight: 500;
 }
 
+/* ── Neutral Calibration ───────────────────────── */
+.calib-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.btn-calib {
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.btn-calib.calibrated {
+  box-shadow: 0 0 0 1px rgba(123, 159, 110, 0.45);
+}
+
+.btn-calib-reset {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.calib-status {
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.calib-status.calib-ok {
+  color: var(--success);
+}
+
+.calib-status.calib-default {
+  color: var(--text-muted);
+}
+
+.calib-help {
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+
 /* ── Meters ─────────────────────────────────────── */
 .meters {
   display: flex;
