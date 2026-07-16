@@ -1,0 +1,22 @@
+node_modules/
+dist/
+release/
+runtime/
+
+# Assets (users bring their own)
+public/assets/*.gif
+public/assets/*.webm
+public/assets/*.webp
+public/assets/*.mp4
+public/assets/*.png
+public/assets/test/
+public/assets/*/
+!public/assets/README.txt
+
+# Build artifacts and archives
+*.rar
+*.zip
+*.7z
+
+# Windows shortcuts (contain absolute paths)
+*.lnk

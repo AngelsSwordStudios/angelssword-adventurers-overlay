@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AS Adventurer — Reactive streaming overlay with face tracking and voice detection. By Angel's Sword Studios.">
+  <title>⚔ AS Adventurer — Control Panel</title>
+  <link rel="stylesheet" href="control.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cinzel+Decorative:wght@400;700&family=Outfit:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <img src="assets/Angelsword-Logo-white_25pct.webp" alt="Angel's Sword Studios" class="brand-logo">
+        <div>
+          <h1>AS Adventurer</h1>
+          <div class="brand-tagline">Reactive Overlay · Angel's Sword Studios</div>
+        </div>
+      </div>
+      <div class="header-status">
+        <span class="status-dot" id="ws-status"></span>
+        <span id="ws-status-text">Connecting...</span>
+      </div>
+    </header>
+
+    <div class="main-grid">
+      <!-- Left Column: Connection & Tracking -->
+      <div class="column">
+
+        <!-- Connection Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>📡 Tracking Source</h2>
+          </div>
+          <div class="card-body">
+            <div class="source-tabs">
+              <button class="source-tab active" data-source="vtube">VTube Studio</button>
+              <button class="source-tab" data-source="ifacial">iFacialMocap</button>
+              <button class="source-tab" data-source="webcam">Webcam</button>
+            </div>
+
+            <!-- VTube Studio -->
+            <div class="source-panel active" id="panel-vtube">
+              <p class="help-text">Enter your iPhone's IP address. Make sure "3rd Party PC Clients" is enabled in VTube Studio on your phone.</p>
+              <div class="input-group">
+                <label>iPhone IP Address</label>
+                <div class="input-row">
+                  <input type="text" id="vts-ip" placeholder="192.168.1.xxx" value="">
+                  <button class="btn btn-primary" id="btn-connect-vts">Connect</button>
+                </div>
+              </div>
+              <div class="connection-status" id="vts-status"></div>
+            </div>
+
+            <!-- iFacialMocap -->
+            <div class="source-panel" id="panel-ifacial">
+              <p class="help-text">Enter your iPhone's IP address. Make sure iFacialMocap is running and your PC's IP is set as the destination.</p>
+              <div class="input-group">
+                <label>iPhone IP Address</label>
+                <div class="input-row">
+                  <input type="text" id="ifacial-ip" placeholder="192.168.1.xxx" value="">
+                  <button class="btn btn-primary" id="btn-connect-ifacial">Connect</button>
+                </div>
+              </div>
+              <div class="connection-status" id="ifacial-status"></div>
+            </div>
+
+            <!-- Webcam -->
+            <div class="source-panel" id="panel-webcam">
+              <p class="help-text">Use your webcam for face tracking. The camera feed stays here — it will NOT appear in OBS.</p>
+              <button class="btn btn-primary" id="btn-start-webcam">Start Webcam</button>
+              <button class="btn btn-secondary" id="btn-stop-webcam" style="display:none;">Stop</button>
+              <div class="webcam-container" id="webcam-container" style="display:none;">
+                <video id="webcam-video" autoplay playsinline muted></video>
+                <canvas id="webcam-canvas"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Thresholds Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>🎚️ Expression Thresholds</h2>
+          </div>
+          <div class="card-body">
+            <div class="slider-group">
+              <label>
+                😊 Smile Sensitivity
+                <span class="slider-value" id="val-smile">20</span>
+              </label>
+              <input type="range" min="5" max="80" value="20" id="threshold-smile">
+            </div>
+            <div class="slider-group">
+              <label>
+                😢 Frown Sensitivity
+                <span class="slider-value" id="val-frown">25</span>
+              </label>
+              <input type="range" min="5" max="80" value="25" id="threshold-frown">
+            </div>
+            <div class="slider-group">
+              <label>
+                😮 Surprised Sensitivity
+                <span class="slider-value" id="val-surprised">25</span>
+              </label>
+              <input type="range" min="5" max="80" value="25" id="threshold-surprised">
+            </div>
+            <div class="slider-group">
+              <label>
+                😑 Eyes Closed Sensitivity
+                <span class="slider-value" id="val-eyes">55</span>
+              </label>
+              <input type="range" min="20" max="90" value="55" id="threshold-eyes">
+            </div>
+            <div class="slider-group">
+              <label>
+                🎤 Mic Threshold
+                <span class="slider-value" id="val-mic">12</span>
+              </label>
+              <input type="range" min="2" max="50" value="12" id="threshold-mic">
+            </div>
+            <div class="slider-group">
+              <label>
+                ⌨️ Typing Sensitivity
+                <span class="slider-value" id="val-typing">5</span>
+                <button class="toggle-btn toggle-on" id="btn-toggle-typing" title="Toggle typing animation">ON</button>
+              </label>
+              <input type="range" min="1" max="30" value="5" id="threshold-typing">
+            </div>
+            <div class="slider-group">
+              <label>
+                💬 Speaking Hold
+                <span class="slider-value" id="val-speaking-hold">400ms</span>
+              </label>
+              <input type="range" min="100" max="1500" step="50" value="400" id="threshold-speaking-hold" title="How long the speaking animation stays active after silence. Higher = holds through longer pauses (good for stuttering). Lower = snappier response.">
+            </div>
+            <div class="slider-group">
+              <label>
+                ⏱️ Eyes Closed Delay
+                <span class="slider-value" id="val-delay">1.5s</span>
+              </label>
+              <input type="range" min="500" max="5000" step="100" value="1500" id="threshold-delay">
+            </div>
+            <div class="slider-group">
+              <label>
+                🎭 Expression Hold
+                <span class="slider-value" id="val-expression-hold">300ms</span>
+              </label>
+              <input type="range" min="100" max="1500" step="50" value="300" id="threshold-expression-hold" title="How long a new expression must be stable before switching. Higher = more stable but slower to react. Lower = more responsive but may flicker.">
+            </div>
+            <div class="slider-group">
+              <label>
+                🔒 Exit Resistance
+                <span class="slider-value" id="val-exit-bias">60%</span>
+              </label>
+              <input type="range" min="20" max="90" step="5" value="60" id="threshold-exit-bias" title="How far an emotion score must drop before leaving the current expression. 60% = must drop to 60% of entry threshold. Higher = stickier emotions, lower = easier to switch away.">
+            </div>
+            <div class="slider-group">
+              <label>
+                🔊 SFX Volume
+                <span class="slider-value" id="val-sfx-volume">100%</span>
+                <button class="toggle-btn toggle-on" id="btn-toggle-sfx" title="Mute/unmute SFX">ON</button>
+              </label>
+              <input type="range" min="0" max="100" step="5" value="100" id="threshold-sfx-volume">
+            </div>
+            <div class="slider-group">
+              <label>
+                ✨ Transition Duration
+                <span class="slider-value" id="val-swap-duration">200ms</span>
+              </label>
+              <input type="range" min="0" max="1000" step="50" value="200" id="threshold-swap-duration" title="Duration of the blur-pop or crossfade transition between expression changes. 0 = instant swap.">
+            </div>
+            <div class="slider-group">
+              <label>
+                🔀 Crossfade Mode
+                <button class="toggle-btn toggle-off" id="btn-crossfade-mode" title="Toggle between blur-pop (OBS-safe) and opacity crossfade">OFF</button>
+              </label>
+              <small class="crossfade-warning" id="crossfade-warning" style="display:none; color: #e8a33a; font-size: 11px; margin-top: 4px;">
+                ⚠️ Causes ghosting on transparent OBS backgrounds
+              </small>
+            </div>
+            <button class="btn btn-secondary" id="btn-reset-thresholds" style="margin-top: 1rem; width: 100%; opacity: 0.7;" title="Reset all thresholds to recommended defaults">↩ Reset to Defaults</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Live Preview & Assets -->
+      <div class="column">
+
+        <!-- Mic Detection Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>🎤 Microphone</h2>
+            <span class="mic-state" id="mic-state">Not started</span>
+          </div>
+          <div class="card-body">
+            <p class="help-text">Mic detection runs here (in your browser) and is sent to the OBS overlay. OBS browser sources can't access the mic directly.</p>
+            <div class="input-row" style="margin-bottom: 10px;">
+              <select id="mic-select" class="mic-dropdown">
+                <option value="">-- Click to load devices --</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="btn-start-mic">Enable Microphone</button>
+            <button class="btn btn-secondary" id="btn-stop-mic" style="display:none;">Disable</button>
+            <div class="mic-display" id="mic-display" style="display:none;">
+              <div class="mic-status-row">
+                <span class="mic-voice-icon" id="mic-voice-icon">🔇</span>
+                <span class="mic-voice-label" id="mic-voice-label">Idle</span>
+              </div>
+              <div class="meter-row" style="margin-top:10px;">
+                <span class="meter-label">Level</span>
+                <div class="meter-bar"><div class="meter-fill mic" id="meter-mic" style="width:0%"></div></div>
+                <span class="meter-value" id="meter-mic-val">0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Status Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>📊 Live Tracking</h2>
+            <span class="tracking-source" id="tracking-source">No data</span>
+          </div>
+          <div class="card-body">
+            <div class="expression-display">
+              <div class="expression-current" id="current-expression-icon">😐</div>
+              <div class="expression-label" id="current-expression-label">Neutral</div>
+            </div>
+            <div class="meters">
+              <div class="meter-row">
+                <span class="meter-label">😊 Smile</span>
+                <div class="meter-bar"><div class="meter-fill" id="meter-smile" style="width:0%"></div></div>
+                <span class="meter-value" id="meter-smile-val">0</span>
+              </div>
+              <div class="meter-row">
+                <span class="meter-label">😢 Frown</span>
+                <div class="meter-bar"><div class="meter-fill frown" id="meter-frown" style="width:0%"></div></div>
+                <span class="meter-value" id="meter-frown-val">0</span>
+              </div>
+              <div class="meter-row">
+                <span class="meter-label">😮 Surprised</span>
+                <div class="meter-bar"><div class="meter-fill surprised" id="meter-surprised" style="width:0%"></div></div>
+                <span class="meter-value" id="meter-surprised-val">0</span>
+              </div>
+              <div class="meter-row">
+                <span class="meter-label">😑 Eyes</span>
+                <div class="meter-bar"><div class="meter-fill eyes" id="meter-eyes" style="width:0%"></div></div>
+                <span class="meter-value" id="meter-eyes-val">0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Model Selector Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>🎭 Model Selector</h2>
+          </div>
+          <div class="card-body">
+            <div class="slider-group">
+              <label>Active Model</label>
+              <select id="model-select" class="model-select">
+                <option value="Default">Loading...</option>
+              </select>
+            </div>
+            <div id="model-info" class="help-text" style="margin-top: 8px;"></div>
+            <div class="help-text" style="margin-top: 8px;">
+              Create folders in <code>public/assets/</code> for each model:<br>
+              <code>assets/ModelA/neutral_idle.gif</code><br>
+              <code>assets/ModelB/neutral_idle.gif</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- State Override Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>🎭 State Override</h2>
+          </div>
+          <div class="card-body">
+            <div class="help-text" style="margin-bottom: 8px;">Override expression when camera tracking is unavailable. Voice tracking still works.</div>
+            <div class="state-override-grid">
+              <button class="state-btn state-btn-active" data-state="auto">🔄 Auto</button>
+              <button class="state-btn" data-state="neutral">😐 Neutral</button>
+              <button class="state-btn" data-state="happy">😊 Happy</button>
+              <button class="state-btn" data-state="sad">😢 Sad</button>
+              <button class="state-btn" data-state="surprised">😮 Surprised</button>
+              <button class="state-btn" data-state="typing">⌨️ Typing</button>
+              <button class="state-btn" data-state="eyes_closed">😑 Eyes Closed</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Emotes Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>🎬 Emotes</h2>
+          </div>
+          <div class="card-body">
+            <div id="emote-grid" class="emote-grid">
+              <div class="help-text">Loading emotes...</div>
+            </div>
+            <div id="sub-animations" class="sub-animations" style="display: none;"></div>
+          </div>
+        </div>
+
+        <!-- Assets Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>🖼️ Assets Status</h2>
+          </div>
+          <div class="card-body">
+            <div class="assets-grid" id="assets-grid">
+              <!-- Populated by JS -->
+            </div>
+            <div class="help-text" style="margin-top: 12px;">
+              States:
+              <code>neutral_idle</code>, <code>neutral_speaking</code>,
+              <code>happy_idle</code>, <code>happy_speaking</code>,
+              <code>sad_idle</code>, <code>sad_speaking</code>,
+              <code>surprised_idle</code>, <code>surprised_speaking</code>,
+              <code>typing</code>, <code>eyes_closed</code><br>
+              <em>Typing is optional — a single animation that plays when keyboard input is detected.</em><br>
+              Supported: <code>.webm</code> <code>.webp</code> <code>.gif</code> <code>.png</code> <code>.mp4</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- OBS Link Card -->
+        <div class="card card-highlight">
+          <div class="card-header">
+            <h2>🎬 OBS Browser Source</h2>
+          </div>
+          <div class="card-body">
+            <p class="help-text">Add this URL as a Browser Source in OBS:</p>
+            <div class="obs-url-box">
+              <code id="obs-url">http://localhost:3000/overlay.html</code>
+              <button class="btn btn-small" id="btn-copy-url">Copy</button>
+            </div>
+            <p class="help-text" style="margin-top:8px;">
+              Add <code>?debug=1</code> to show the debug panel in OBS.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="control.js"></script>
+</body>
+</html>

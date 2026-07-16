@@ -1,0 +1,22 @@
+{
+  "name": "as-adventurer",
+  "version": "0.1.0",
+  "description": "AS Adventurer — streaming overlay with face tracking and voice detection",
+  "main": "server.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js",
+    "placeholders": "node generate-placeholders.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "archiver": "^8.0.0",
+    "rcedit": "^5.0.2"
+  }
+}

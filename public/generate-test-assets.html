@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head><title>Generate Test Assets</title></head>
+<body>
+<script>
+// Quick script to generate colored placeholder PNGs for testing
+const states = {
+  neutral_idle:      { bg: '#3b3b5c', emoji: '😐', label: 'Neutral Idle' },
+  neutral_speaking:  { bg: '#4c4c7a', emoji: '😐', label: 'Neutral Speaking', ring: true },
+  happy_idle:        { bg: '#2d5a3d', emoji: '😊', label: 'Happy Idle' },
+  happy_speaking:    { bg: '#3d7a4f', emoji: '😊', label: 'Happy Speaking', ring: true },
+  sad_idle:          { bg: '#3b4a6b', emoji: '😢', label: 'Sad Idle' },
+  sad_speaking:      { bg: '#4a5e85', emoji: '😢', label: 'Sad Speaking', ring: true },
+  eyes_closed:       { bg: '#2a2a3a', emoji: '😑', label: 'Eyes Closed' },
+};
+
+const canvas = document.createElement('canvas');
+canvas.width = 400;
+canvas.height = 400;
+const ctx = canvas.getContext('2d');
+
+const links = document.createElement('div');
+links.style.cssText = 'font-family: sans-serif; padding: 20px;';
+links.innerHTML = '<h2>Right-click each image → "Save Image As" → save to public/assets/</h2>';
+document.body.appendChild(links);
+
+for (const [name, cfg] of Object.entries(states)) {
+  // Draw circle avatar placeholder
+  ctx.clearRect(0, 0, 400, 400);
+  
+  // Background circle
+  ctx.beginPath();
+  ctx.arc(200, 200, 180, 0, Math.PI * 2);
+  ctx.fillStyle = cfg.bg;
+  ctx.fill();
+  
+  // Speaking ring
+  if (cfg.ring) {
+    ctx.beginPath();
+    ctx.arc(200, 200, 185, 0, Math.PI * 2);
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  }
+  
+  // Emoji
+  ctx.font = '120px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cfg.emoji, 200, 180);
+  
+  // Label
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(cfg.label, 200, 320);
+  
+  const img = document.createElement('img');
+  img.src = canvas.toDataURL('image/png');
+  img.style.cssText = 'width:150px; margin:10px; border: 1px solid #333; border-radius: 8px;';
+  img.title = name + '.png';
+  
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:inline-block; text-align:center;';
+  wrap.appendChild(img);
+  const label = document.createElement('div');
+  label.textContent = name + '.png';
+  label.style.cssText = 'font-size:12px; color:#666;';
+  wrap.appendChild(label);
+  
+  // Download link
+  const dl = document.createElement('a');
+  dl.href = canvas.toDataURL('image/png');
+  dl.download = name + '.png';
+  dl.textContent = 'Download';
+  dl.style.cssText = 'font-size:11px; display:block; color: #6366f1;';
+  wrap.appendChild(dl);
+  
+  links.appendChild(wrap);
+}
+</script>
+</body>
+</html>

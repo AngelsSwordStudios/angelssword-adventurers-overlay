@@ -1,0 +1,139 @@
+/* ── Reset & Transparent Background ─────────────── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* ── Overlay Container ──────────────────────────── */
+#overlay-container {
+  --swap-duration: 200ms;  /* Controlled by control panel slider */
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Asset Layers ───────────────────────────────── */
+.asset-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity, filter, transform;
+  /* No opacity transition — on transparent backgrounds (OBS), crossfades
+     cause ghosting/doubling. Blur + pop animations smooth the hard swap. */
+}
+
+.asset-layer.active {
+  opacity: 1;
+}
+
+/* Combined transition: blur + pop on state swap */
+.asset-layer.transition-swap {
+  animation: swap-effect var(--swap-duration, 200ms) ease-out;
+}
+
+@keyframes swap-effect {
+  0%   { filter: blur(3px); transform: scale(1.015); }
+  100% { filter: blur(0px); transform: scale(1); }
+}
+
+/* ── Crossfade Mode ─────────────────────────────── */
+/* Opt-in opacity crossfade for non-transparent setups.
+   WARNING: On transparent OBS backgrounds, both layers are visible
+   during the crossfade → ghosting/character doubling. */
+#overlay-container.crossfade-mode .asset-layer {
+  transition: opacity var(--swap-duration, 200ms) ease-in-out;
+}
+#overlay-container.crossfade-mode .asset-layer.transition-swap {
+  animation: none;  /* Disable blur-pop when crossfading */
+}
+
+/* Emote layer always on top of expression layers */
+#layer-emote.active {
+  z-index: 10;
+}
+
+.asset-layer img,
+.asset-layer video {
+  height: 100%;
+  width: auto;
+  max-width: none;
+}
+
+/* ── Speaking bounce animation ──────────────────── */
+.asset-layer.speaking-bounce {
+  animation: speak-bounce 0.15s ease-out;
+}
+
+@keyframes speak-bounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+/* ── Debug Panel ────────────────────────────────── */
+#debug-panel {
+  display: none;
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-family: 'Segoe UI', monospace;
+  font-size: 13px;
+  z-index: 9999;
+  min-width: 180px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#debug-panel.visible {
+  display: block;
+}
+
+#debug-state {
+  font-weight: 700;
+  font-size: 15px;
+  color: #7cff7c;
+  margin-bottom: 4px;
+}
+
+#debug-expression, #debug-voice {
+  color: #ccc;
+  margin-bottom: 2px;
+}
+
+#debug-mic-level {
+  margin-top: 6px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#debug-mic-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4ade80, #facc15, #ef4444);
+  border-radius: 3px;
+  transition: width 0.05s linear;
+}
