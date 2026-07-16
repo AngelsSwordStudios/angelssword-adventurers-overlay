@@ -6,7 +6,8 @@
   "license": "MIT",
   "scripts": {
     "start": "node server.js",
-    "placeholders": "node generate-placeholders.js"
+    "placeholders": "node generate-placeholders.js",
+    "release": "node build-release.js"
   },
   "dependencies": {
     "express": "^4.21.0",
