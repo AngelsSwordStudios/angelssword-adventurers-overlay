@@ -8,43 +8,82 @@
 //  Better: click "Calibrate Neutral" while holding a
 //  relaxed face — we snapshot current blendshapes and
 //  use those as your personal baseline (saved in localStorage).
+//
+//  NOTE: Frown signals from MediaPipe are weaker than smile
+//  (mouthFrown / browDown often only reach ~15–30 when sad).
+//  Floors for frown keys are kept lower so real frowns still
+//  survive deadzone + gain.
 // ═══════════════════════════════════════════════════
 
 (() => {
   'use strict';
 
   const STORAGE_KEY = 'as-adventurer-settings';
-  const CAL_KEY = 'neutralCalibration'; // stored inside settings JSON
+  const CAL_KEY = 'neutralCalibration';
 
-  // Built-in floors when user has not calibrated yet (0–100 scale)
+  // Built-in floors when user has not calibrated yet (0–100 scale).
+  // Smile floors stay higher (resting smile bias is common).
+  // Frown floors stay LOW — MediaPipe sad shapes rarely go high.
   const DEFAULT_FLOORS = {
+    // Smile (strong resting bias on many faces)
     mouthSmileLeft: 12,
     mouthSmileRight: 12,
     cheekSquintLeft: 14,
     cheekSquintRight: 14,
     eyeSquintLeft: 8,
     eyeSquintRight: 8,
-    browDownLeft: 14,
-    browDownRight: 14,
-    browInnerUp: 12,
-    mouthFrownLeft: 12,
-    mouthFrownRight: 12,
-    eyeWideLeft: 6,
-    eyeWideRight: 6,
-    jawOpen: 6,
-    browOuterUpLeft: 6,
-    browOuterUpRight: 6,
-    mouthFunnel: 6,
+    // Frown — KEEP LOW so real frowns still register
+    browDownLeft: 5,
+    browDownRight: 5,
+    browInnerUp: 4,
+    mouthFrownLeft: 4,
+    mouthFrownRight: 4,
+    // Surprised
+    eyeWideLeft: 5,
+    eyeWideRight: 5,
+    jawOpen: 5,
+    browOuterUpLeft: 5,
+    browOuterUpRight: 5,
+    mouthFunnel: 5,
   };
 
-  // Extra headroom so tiny noise above the snapshot still zeros out
-  const CALIBRATE_PADDING = 2;
+  // Max floor we ever allow from calibration (prevents a bad snapshot
+  // or high resting brow from permanently killing frown/smile).
+  const MAX_FLOOR = {
+    mouthSmileLeft: 22,
+    mouthSmileRight: 22,
+    cheekSquintLeft: 22,
+    cheekSquintRight: 22,
+    eyeSquintLeft: 16,
+    eyeSquintRight: 16,
+    // Frown hard-capped lower
+    browDownLeft: 10,
+    browDownRight: 10,
+    browInnerUp: 8,
+    mouthFrownLeft: 8,
+    mouthFrownRight: 8,
+    eyeWideLeft: 12,
+    eyeWideRight: 12,
+    jawOpen: 12,
+    browOuterUpLeft: 12,
+    browOuterUpRight: 12,
+    mouthFunnel: 12,
+  };
 
-  // Keys we care about for expression composites
+  const FROWN_KEYS = new Set([
+    'browDownLeft', 'browDownRight', 'browInnerUp',
+    'mouthFrownLeft', 'mouthFrownRight',
+  ]);
+
+  // Extra headroom only for smile-like resting noise
+  const CALIBRATE_PADDING_SMILE = 2;
+  const CALIBRATE_PADDING_FROWN = 1;
+  const CALIBRATE_PADDING_OTHER = 1;
+
   const TRACKED_KEYS = Object.keys(DEFAULT_FLOORS);
 
   let floors = { ...DEFAULT_FLOORS };
-  let lastRawBlendshapes = null; // last pre-deadzone map from webcam
+  let lastRawBlendshapes = null;
   let isCalibrated = false;
   let calibratedAt = null;
 
@@ -62,11 +101,21 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   }
 
+  function clampFloor(key, value) {
+    const max = MAX_FLOOR[key] != null ? MAX_FLOOR[key] : 15;
+    return Math.max(0, Math.min(max, value));
+  }
+
   function restoreCalibration() {
     const s = loadSettings();
     const cal = s[CAL_KEY];
     if (cal && cal.floors && typeof cal.floors === 'object') {
-      floors = { ...DEFAULT_FLOORS, ...cal.floors };
+      // Re-clamp stored floors (older calibrations may have had high frown floors)
+      const fixed = {};
+      for (const [k, v] of Object.entries(cal.floors)) {
+        fixed[k] = clampFloor(k, Number(v) || 0);
+      }
+      floors = { ...DEFAULT_FLOORS, ...fixed };
       isCalibrated = true;
       calibratedAt = cal.at || null;
       console.log('[deadzone] Restored neutral calibration from', calibratedAt || 'storage');
@@ -89,10 +138,6 @@
     return out;
   }
 
-  /**
-   * Snapshot current face as neutral baseline.
-   * Returns { ok, message, floors }.
-   */
   function calibrateNeutral() {
     if (!lastRawBlendshapes || Object.keys(lastRawBlendshapes).length === 0) {
       return {
@@ -103,24 +148,22 @@
 
     const snapshot = {};
     let count = 0;
+
     for (const key of TRACKED_KEYS) {
       const v = Number(lastRawBlendshapes[key]);
       if (!isFinite(v)) continue;
-      // Store resting value + small padding so meter sits at 0 when still
-      snapshot[key] = Math.max(0, Math.min(80, v + CALIBRATE_PADDING));
-      count++;
-    }
 
-    // Also capture any other keys present in the map (future-proof)
-    for (const [k, v] of Object.entries(lastRawBlendshapes)) {
-      if (snapshot[k] !== undefined) continue;
-      const n = Number(v);
-      if (!isFinite(n) || n <= 0) continue;
-      // Only mild floor for unlisted keys so we don't over-suppress
-      if (n > 5) {
-        snapshot[k] = Math.min(40, n + CALIBRATE_PADDING);
-        count++;
+      let pad = CALIBRATE_PADDING_OTHER;
+      if (FROWN_KEYS.has(key)) pad = CALIBRATE_PADDING_FROWN;
+      else if (key.indexOf('Smile') !== -1 || key.indexOf('Squint') !== -1 || key.indexOf('cheek') !== -1) {
+        pad = CALIBRATE_PADDING_SMILE;
       }
+
+      // Only floor what's actually elevated at rest (ignore pure zeros)
+      // Still store a small floor so tiny noise stays quiet
+      const rawFloor = v > 0.5 ? v + pad : pad * 0.5;
+      snapshot[key] = clampFloor(key, rawFloor);
+      count++;
     }
 
     if (count === 0) {
@@ -131,10 +174,10 @@
     isCalibrated = true;
     calibratedAt = new Date().toISOString();
     saveSettings({
-      [CAL_KEY]: { floors: snapshot, at: calibratedAt },
+      [CAL_KEY]: { floors: snapshot, at: calibratedAt, version: 2 },
     });
 
-    console.log('[deadzone] Neutral calibrated from', count, 'shapes @', calibratedAt, snapshot);
+    console.log('[deadzone] Neutral calibrated (v2) from', count, 'shapes @', calibratedAt, snapshot);
     updateCalibUI();
     return {
       ok: true,
@@ -204,7 +247,6 @@
         if (typeof data === 'string' && data.indexOf('webcam_tracking') !== -1) {
           const msg = JSON.parse(data);
           if (msg.type === 'webcam_tracking' && msg.blendShapes) {
-            // Keep RAW for next calibrate click (before floors)
             lastRawBlendshapes = { ...msg.blendShapes };
             msg.blendShapes = applyDeadzone(msg.blendShapes);
             data = JSON.stringify(msg);
@@ -244,12 +286,11 @@
       });
     }
 
-    // Public API for debugging / other scripts
     window.AS_calibrateNeutral = calibrateNeutral;
     window.AS_resetCalibration = resetCalibration;
     window.AS_getDeadzoneFloors = () => ({ ...floors, __calibrated: isCalibrated });
 
-    console.log('[deadzone] Ready (calibrated=' + isCalibrated + ')');
+    console.log('[deadzone] Ready (calibrated=' + isCalibrated + ', frown-friendly floors)');
   }
 
   if (document.readyState === 'loading') {
