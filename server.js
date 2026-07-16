@@ -562,6 +562,11 @@ let thresholds = {
   eyesClosed: 55
 };
 
+// MediaPipe (and many webcams) rarely push individual blendshapes past ~0.3–0.4
+// (i.e. 30–40 on the 0-100 scale). A weighted average therefore caps around 32.
+// We apply a gain so strong expressions can reach near 100 on the meters.
+const EXPRESSION_GAIN = 3.0;
+
 function detectExpression(blendShapes) {
   // Helper that tries multiple key name conventions
   const get = (...names) => {
@@ -606,18 +611,24 @@ function detectExpression(blendShapes) {
   const cheekSquint = (cheekSquintL + cheekSquintR) / 2;
   const eyeSquint   = (eyeSquintL + eyeSquintR) / 2;
   const mouthSmile  = (mouthSmileL + mouthSmileR) / 2;
-  const smile = (cheekSquint * 0.45) + (eyeSquint * 0.35) + (mouthSmile * 0.20);
+  let smile = (cheekSquint * 0.45) + (eyeSquint * 0.35) + (mouthSmile * 0.20);
 
   // Sad: brow furrow + inner brow raise + mouth frown
   const browDown    = (browDownL + browDownR) / 2;
   const mouthFrown  = (mouthFrownL + mouthFrownR) / 2;
-  const frown = (browDown * 0.40) + (browInnerUp * 0.30) + (mouthFrown * 0.30);
+  let frown = (browDown * 0.40) + (browInnerUp * 0.30) + (mouthFrown * 0.30);
 
   // Surprised: eyes wide open + jaw open (O-mouth) + raised brows
   // These are the OPPOSITE of happy (wide eyes vs squint, open mouth vs smile)
   const eyeWide   = (eyeWideL + eyeWideR) / 2;
   const browUp    = ((browOuterL + browOuterR) / 2 + browInnerUp) / 2;
-  const surprised = (eyeWide * 0.35) + (jawOpen * 0.35) + (browUp * 0.15) + (mouthFunnel * 0.15);
+  let surprised = (eyeWide * 0.35) + (jawOpen * 0.35) + (browUp * 0.15) + (mouthFunnel * 0.15);
+
+  // Apply gain so MediaPipe webcam scores can fill the 0-100 meter
+  // (raw composites rarely exceed ~32 without this)
+  smile     = Math.min(100, smile     * EXPRESSION_GAIN);
+  frown     = Math.min(100, frown     * EXPRESSION_GAIN);
+  surprised = Math.min(100, surprised * EXPRESSION_GAIN);
 
   // ── Expression priority: eyes_closed > surprised > happy > sad > neutral
   if (eyesClosed > thresholds.eyesClosed) {
