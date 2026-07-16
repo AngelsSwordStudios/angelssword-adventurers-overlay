@@ -1,10 +1,14 @@
 // ═══════════════════════════════════════════════════
-//  AS Adventurer — Optional calibrate + client gain
+//  AS Adventurer — Pipeline: optional floors + live gain
 //
-//  DEFAULT: MediaPipe passthrough (no floors).
-//  Gain sliders amplify blendshapes before they hit the
-//  server — so BOTH entering an expression AND returning
-//  to neutral scale with the same gain (live scores).
+//  Gain source (priority):
+//    1) window.AS_GAINS  (set live by gain-sliders.js)
+//    2) #gain-* slider DOM values
+//    3) localStorage
+//    4) 1.0 fallback
+//
+//  Applied to blendshapes BEFORE server composites so
+//  enter + return both scale with the slider.
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -32,7 +36,6 @@
   const FROWN_SET = new Set(FROWN_KEYS);
   const SURPRISED_SET = new Set(SURPRISED_KEYS);
 
-  // MediaPipe default = zero floors
   const DEFAULT_FLOORS = Object.fromEntries(ALL_KEYS.map((k) => [k, 0]));
   const MAX_FLOOR = 50;
   const PAD = 2;
@@ -43,6 +46,10 @@
   let isCalibrated = false;
   let calibratedAt = null;
   let calibrating = false;
+
+  // Lightweight debug: last applied gains + sample scaled key
+  let _lastLoggedGain = '';
+  let _frameCount = 0;
 
   function loadSettings() {
     try {
@@ -58,25 +65,54 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   }
 
+  function clampGain(v) {
+    const n = Number(v);
+    if (!isFinite(n)) return 1.0;
+    return Math.min(6, Math.max(0.5, n));
+  }
+
+  /** Live gains — prefer in-memory object from gain-sliders.js */
   function readGains() {
+    // 1) Live object (updated on every slider tick)
+    if (window.AS_GAINS && typeof window.AS_GAINS === 'object') {
+      return {
+        smile: clampGain(window.AS_GAINS.smile),
+        frown: clampGain(window.AS_GAINS.frown),
+        surprised: clampGain(window.AS_GAINS.surprised),
+      };
+    }
+
+    // 2) DOM sliders
+    const dom = (id) => {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const n = parseFloat(el.value);
+      return isFinite(n) ? n : null;
+    };
+    const dSmile = dom('gain-smile');
+    const dFrown = dom('gain-frown');
+    const dSurp = dom('gain-surprised');
+    if (dSmile != null || dFrown != null || dSurp != null) {
+      return {
+        smile: clampGain(dSmile ?? 1),
+        frown: clampGain(dFrown ?? 1),
+        surprised: clampGain(dSurp ?? 1),
+      };
+    }
+
+    // 3) localStorage
     const s = loadSettings();
     const g = s.gains || {};
     const t = s.thresholds || {};
-    const clamp = (v) => {
-      const n = Number(v);
-      if (!isFinite(n)) return 1.0;
-      return Math.min(6, Math.max(0.5, n));
-    };
     return {
-      smile: clamp(g.smile ?? t.smileGain ?? 1.0),
-      frown: clamp(g.frown ?? t.frownGain ?? 1.0),
-      surprised: clamp(g.surprised ?? t.surprisedGain ?? 1.0),
+      smile: clampGain(g.smile ?? t.smileGain ?? 1.0),
+      frown: clampGain(g.frown ?? t.frownGain ?? 1.0),
+      surprised: clampGain(g.surprised ?? t.surprisedGain ?? 1.0),
     };
   }
 
   function restoreCalibration() {
     const s = loadSettings();
-    // Always clear legacy experimental calibrations unless v6+ intentional
     if (s[CAL_KEY] && (s[CAL_KEY].version || 0) < 6) {
       delete s[CAL_KEY];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
@@ -99,14 +135,13 @@
     const out = { ...map };
     const gains = readGains();
 
-    // 1) Optional floors (default all 0 = passthrough)
+    // Optional floors
     for (const [k, floor] of Object.entries(floors)) {
       if (out[k] === undefined || !(floor > 0)) continue;
       out[k] = Math.max(0, Number(out[k]) - floor);
     }
 
-    // 2) Gain — amplifies residual for enter AND return
-    //    (same multiplier on the way up and down)
+    // Live gain on expression keys
     for (const k of Object.keys(out)) {
       let g = 1.0;
       if (SMILE_SET.has(k)) g = gains.smile;
@@ -114,8 +149,19 @@
       else if (SURPRISED_SET.has(k)) g = gains.surprised;
       else continue;
       if (g === 1.0) continue;
-      out[k] = Math.min(100, Math.max(0, Number(out[k]) * g));
+      const raw = Number(out[k]);
+      if (!isFinite(raw)) continue;
+      out[k] = Math.min(100, Math.max(0, raw * g));
     }
+
+    // Occasional debug log when gain changes
+    _frameCount++;
+    const sig = gains.smile + ',' + gains.frown + ',' + gains.surprised;
+    if (sig !== _lastLoggedGain && _frameCount % 30 === 0) {
+      _lastLoggedGain = sig;
+      console.log('[pipeline] applying gains', gains);
+    }
+
     return out;
   }
 
@@ -183,7 +229,7 @@
         [CAL_KEY]: { floors: snapshot, at: calibratedAt, version: 6 },
       });
 
-      console.log('[deadzone] Optional calibration applied', snapshot);
+      console.log('[pipeline] Optional calibration applied', snapshot);
       updateCalibUI();
       const r = { ok: true, message: 'Calibrated', floors: snapshot };
       if (done) done(r);
@@ -249,6 +295,7 @@
     }, 1800);
   }
 
+  // Patch WebSocket.send so every webcam_tracking message is scaled
   const proto = window.WebSocket && window.WebSocket.prototype;
   if (proto && !proto.__asDeadzonePatched) {
     const origSend = proto.send;
@@ -259,15 +306,17 @@
           if (msg.type === 'webcam_tracking' && msg.blendShapes) {
             lastRawBlendshapes = { ...msg.blendShapes };
             pushHistory(lastRawBlendshapes);
-            // floors (optional) then gain (enter + return)
             msg.blendShapes = applyPipeline(msg.blendShapes);
             data = JSON.stringify(msg);
           }
         }
-      } catch (e) { /* pass */ }
+      } catch (e) {
+        console.warn('[pipeline] send patch error', e);
+      }
       return origSend.call(this, data);
     };
     proto.__asDeadzonePatched = true;
+    console.log('[pipeline] WebSocket.send patched for live gain');
   }
 
   function initUI() {
@@ -309,8 +358,9 @@
       __calibrated: isCalibrated,
       __gains: readGains(),
     });
+    window.AS_readGains = readGains;
 
-    console.log('[pipeline] MediaPipe defaults + client gain (enter & return)');
+    console.log('[pipeline] Ready — gains from AS_GAINS / sliders / storage');
   }
 
   if (document.readyState === 'loading') {
