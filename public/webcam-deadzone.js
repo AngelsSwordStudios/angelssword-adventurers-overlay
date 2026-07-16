@@ -1,11 +1,10 @@
 // ═══════════════════════════════════════════════════
-//  AS Adventurer — Optional neutral calibration
+//  AS Adventurer — Optional calibrate + client gain
 //
-//  DEFAULT: MediaPipe passthrough (no floors, no boost).
-//  Expression sensitivity is controlled only by Gain sliders.
-//
-//  Optional: "Calibrate Neutral" still available if you want
-//  a personal resting baseline later.
+//  DEFAULT: MediaPipe passthrough (no floors).
+//  Gain sliders amplify blendshapes before they hit the
+//  server — so BOTH entering an expression AND returning
+//  to neutral scale with the same gain (live scores).
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -29,9 +28,12 @@
   ];
   const ALL_KEYS = [...new Set([...SMILE_KEYS, ...FROWN_KEYS, ...SURPRISED_KEYS])];
 
-  // MediaPipe default = zero floors (true passthrough)
-  const DEFAULT_FLOORS = Object.fromEntries(ALL_KEYS.map((k) => [k, 0]));
+  const SMILE_SET = new Set(SMILE_KEYS);
+  const FROWN_SET = new Set(FROWN_KEYS);
+  const SURPRISED_SET = new Set(SURPRISED_KEYS);
 
+  // MediaPipe default = zero floors
+  const DEFAULT_FLOORS = Object.fromEntries(ALL_KEYS.map((k) => [k, 0]));
   const MAX_FLOOR = 50;
   const PAD = 2;
 
@@ -56,36 +58,63 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   }
 
+  function readGains() {
+    const s = loadSettings();
+    const g = s.gains || {};
+    const t = s.thresholds || {};
+    const clamp = (v) => {
+      const n = Number(v);
+      if (!isFinite(n)) return 1.0;
+      return Math.min(6, Math.max(0.5, n));
+    };
+    return {
+      smile: clamp(g.smile ?? t.smileGain ?? 1.0),
+      frown: clamp(g.frown ?? t.frownGain ?? 1.0),
+      surprised: clamp(g.surprised ?? t.surprisedGain ?? 1.0),
+    };
+  }
+
   function restoreCalibration() {
     const s = loadSettings();
-    // Drop all old deadzone calibrations from previous experiments
-    if (s[CAL_KEY]) {
+    // Always clear legacy experimental calibrations unless v6+ intentional
+    if (s[CAL_KEY] && (s[CAL_KEY].version || 0) < 6) {
       delete s[CAL_KEY];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-      console.log('[deadzone] Cleared old calibration — MediaPipe defaults (gain-only)');
     }
-    floors = { ...DEFAULT_FLOORS };
-    isCalibrated = false;
-    calibratedAt = null;
+    const cal = loadSettings()[CAL_KEY];
+    if (cal && cal.floors && typeof cal.floors === 'object') {
+      floors = { ...DEFAULT_FLOORS, ...cal.floors };
+      isCalibrated = true;
+      calibratedAt = cal.at || null;
+    } else {
+      floors = { ...DEFAULT_FLOORS };
+      isCalibrated = false;
+      calibratedAt = null;
+    }
     updateCalibUI();
   }
 
-  function applyDeadzone(map) {
+  function applyPipeline(map) {
     if (!map || typeof map !== 'object') return map;
-    // Passthrough when all floors are 0
-    let any = false;
-    for (const f of Object.values(floors)) {
-      if (f > 0) {
-        any = true;
-        break;
-      }
-    }
-    if (!any) return map;
-
     const out = { ...map };
+    const gains = readGains();
+
+    // 1) Optional floors (default all 0 = passthrough)
     for (const [k, floor] of Object.entries(floors)) {
-      if (out[k] === undefined || floor <= 0) continue;
+      if (out[k] === undefined || !(floor > 0)) continue;
       out[k] = Math.max(0, Number(out[k]) - floor);
+    }
+
+    // 2) Gain — amplifies residual for enter AND return
+    //    (same multiplier on the way up and down)
+    for (const k of Object.keys(out)) {
+      let g = 1.0;
+      if (SMILE_SET.has(k)) g = gains.smile;
+      else if (FROWN_SET.has(k)) g = gains.frown;
+      else if (SURPRISED_SET.has(k)) g = gains.surprised;
+      else continue;
+      if (g === 1.0) continue;
+      out[k] = Math.min(100, Math.max(0, Number(out[k]) * g));
     }
     return out;
   }
@@ -174,7 +203,7 @@
     delete s[CAL_KEY];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
     updateCalibUI();
-    return { ok: true, message: 'Back to MediaPipe defaults (no floors)' };
+    return { ok: true, message: 'MediaPipe defaults (no floors)' };
   }
 
   function updateCalibUI() {
@@ -196,7 +225,7 @@
         statusEl.classList.add('calib-ok');
         statusEl.classList.remove('calib-default');
       } else {
-        statusEl.textContent = 'MediaPipe defaults (gain-only)';
+        statusEl.textContent = 'MediaPipe defaults — use Gain sliders';
         statusEl.classList.add('calib-default');
         statusEl.classList.remove('calib-ok');
       }
@@ -230,7 +259,8 @@
           if (msg.type === 'webcam_tracking' && msg.blendShapes) {
             lastRawBlendshapes = { ...msg.blendShapes };
             pushHistory(lastRawBlendshapes);
-            msg.blendShapes = applyDeadzone(msg.blendShapes);
+            // floors (optional) then gain (enter + return)
+            msg.blendShapes = applyPipeline(msg.blendShapes);
             data = JSON.stringify(msg);
           }
         }
@@ -274,9 +304,13 @@
         if (r && !r.pending) resolve(r);
       });
     window.AS_resetCalibration = resetCalibration;
-    window.AS_getDeadzoneFloors = () => ({ ...floors, __calibrated: isCalibrated });
+    window.AS_getDeadzoneFloors = () => ({
+      ...floors,
+      __calibrated: isCalibrated,
+      __gains: readGains(),
+    });
 
-    console.log('[deadzone] MediaPipe defaults — passthrough; use Gain sliders for sensitivity');
+    console.log('[pipeline] MediaPipe defaults + client gain (enter & return)');
   }
 
   if (document.readyState === 'loading') {
