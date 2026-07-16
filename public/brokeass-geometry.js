@@ -1,15 +1,12 @@
 // ═══════════════════════════════════════════════════
-//  BrokeAss VTuber geometry — smile / frown / open-mouth
-//  Same spirit as tracker.py landmark ratios
-//
-//  Sensitivity: min(1, raw * mult) * 100  (BrokeAss debug meters)
-//  Then stuffs blendshape channels so server composites match.
+//  BrokeAss geometry — smile / frown / surprised / eyes
+//  Sensitivity: min(1, raw * mult) * 100
+//  Then stuffs blendshape channels for server composites.
 // ═══════════════════════════════════════════════════
 
 (() => {
   'use strict';
 
-  /** Mouth open 0–1 — tracker.get_mouth_open_ratio */
   function getMouthOpenRatio(landmarks) {
     try {
       var upper = landmarks[13];
@@ -22,7 +19,6 @@
     }
   }
 
-  /** Smile 0–1 — tracker.get_smile_ratio (corners up ×12) */
   function getSmileRatio(landmarks) {
     try {
       var leftCorner = landmarks[61];
@@ -38,7 +34,6 @@
     }
   }
 
-  /** Eyebrow raise 0–1 — tracker.get_eyebrow_raise_ratio */
   function getEyebrowRaiseRatio(landmarks) {
     try {
       var browY = (landmarks[55].y + landmarks[285].y) / 2;
@@ -50,26 +45,13 @@
     }
   }
 
-  /**
-   * Frown / sad 0–1 — BrokeAss sad_frown uses LOW brow raise.
-   * Continuous meter: brow drop toward eyes + mouth corners down
-   * (inverse of smile corners).
-   */
   function getFrownRatio(landmarks) {
     try {
-      // --- Brow drop (opposite of raise) ---
-      // When frowning, brows move down (larger y) toward/over the eyes.
-      var leftBrowY = landmarks[55].y;
-      var rightBrowY = landmarks[285].y;
-      var browY = (leftBrowY + rightBrowY) / 2;
-      var leftEyeTopY = landmarks[159].y;
-      var rightEyeTopY = landmarks[386].y;
-      var eyeTopY = (leftEyeTopY + rightEyeTopY) / 2;
-      // Positive when brow is level with or below upper eyelid line
+      var browY = (landmarks[55].y + landmarks[285].y) / 2;
+      var eyeTopY = (landmarks[159].y + landmarks[386].y) / 2;
       var browDrop = Math.max(0, browY - eyeTopY + 0.025);
       var browFrown = Math.min(browDrop * 14.0, 1.0);
 
-      // --- Mouth corners down (inverse smile) ---
       var leftCorner = landmarks[61];
       var rightCorner = landmarks[291];
       var upperLip = landmarks[13];
@@ -79,8 +61,37 @@
       var cornerDown = Math.max(0, cornerY - mouthCenterY);
       var mouthFrown = Math.min(cornerDown * 12.0, 1.0);
 
-      // Weight brow more (BrokeAss sad is primarily brow-driven)
       return Math.min(1.0, browFrown * 0.55 + mouthFrown * 0.45);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /**
+   * Eyes closed 0–1 via eye aspect ratio (EAR).
+   * Open eye EAR ~0.2–0.3; closed ~0–0.08.
+   * Maps to closed score so higher = more closed.
+   */
+  function getEyesClosedRatio(landmarks) {
+    try {
+      function ear(upper, lower, outer, inner) {
+        var v = Math.abs(landmarks[upper].y - landmarks[lower].y);
+        var h = Math.abs(landmarks[outer].x - landmarks[inner].x);
+        return h > 1e-6 ? v / h : 0;
+      }
+      // Left: upper 159, lower 145, outer 33, inner 133
+      // Right: upper 386, lower 374, outer 263, inner 362
+      var left = ear(159, 145, 33, 133);
+      var right = ear(386, 374, 263, 362);
+      var openEar = (left + right) / 2;
+
+      // openEar open≈0.22, closed≈0.05 → closed ratio 0–1
+      var OPEN = 0.22;
+      var CLOSED = 0.05;
+      var closed = (OPEN - openEar) / (OPEN - CLOSED);
+      if (closed < 0) closed = 0;
+      if (closed > 1) closed = 1;
+      return closed;
     } catch (e) {
       return 0;
     }
@@ -92,6 +103,7 @@
         smile: Number(window.AS_GAINS.smile) || 1,
         surprised: Number(window.AS_GAINS.surprised) || 1,
         frown: Number(window.AS_GAINS.frown) || 1,
+        eyes: Number(window.AS_GAINS.eyes) || 1,
       };
     }
     function clamp(v) {
@@ -102,10 +114,10 @@
       smile: clamp(document.getElementById('gain-smile') && document.getElementById('gain-smile').value),
       surprised: clamp(document.getElementById('gain-surprised') && document.getElementById('gain-surprised').value),
       frown: clamp(document.getElementById('gain-frown') && document.getElementById('gain-frown').value),
+      eyes: clamp(document.getElementById('gain-eyes') && document.getElementById('gain-eyes').value),
     };
   }
 
-  // BrokeAss: min(1.0, raw * mult) then ×100 for meters
   function applySensitivity(raw01, mult) {
     var m = isFinite(mult) && mult > 0 ? mult : 1;
     return Math.min(100, Math.min(1.0, raw01 * m) * 100);
@@ -118,21 +130,24 @@
     var rawMouth = getMouthOpenRatio(landmarks);
     var rawSmile = getSmileRatio(landmarks);
     var rawFrown = getFrownRatio(landmarks);
+    var rawEyes = getEyesClosedRatio(landmarks);
 
     var smileScore = applySensitivity(rawSmile, gains.smile);
     var mouthScore = applySensitivity(rawMouth, gains.surprised);
     var frownScore = applySensitivity(rawFrown, gains.frown);
+    var eyesScore = applySensitivity(rawEyes, gains.eyes);
 
     blendShapeMap._smileRatio = smileScore;
     blendShapeMap._mouthOpenRatio = mouthScore;
     blendShapeMap._frownRatio = frownScore;
+    blendShapeMap._eyesClosedRatio = eyesScore;
     blendShapeMap._rawMouthOpen = Math.min(100, rawMouth * 100);
     blendShapeMap._rawSmile = Math.min(100, rawSmile * 100);
     blendShapeMap._rawFrown = Math.min(100, rawFrown * 100);
+    blendShapeMap._rawEyes = Math.min(100, rawEyes * 100);
     blendShapeMap._geometry = 1;
 
-    // ── Smile channels → composite = smileScore ──
-    // smile = 0.45*cheek + 0.35*eyeSquint + 0.20*mouthSmile
+    // Smile → composite = smileScore
     var s = smileScore;
     blendShapeMap.cheekSquintLeft = s;
     blendShapeMap.cheekSquintRight = s;
@@ -141,9 +156,7 @@
     blendShapeMap.mouthSmileLeft = s;
     blendShapeMap.mouthSmileRight = s;
 
-    // ── Surprised (open mouth) → composite ≈ mouthScore ──
-    // surprised = 0.35*ew + 0.35*jaw + 0.15*browUp + 0.15*funnel
-    // browInner left at 0 → browUp = outer/2 → factor 0.925
+    // Surprised (open mouth) ≈ mouthScore (factor 0.925)
     var m = Math.min(100, mouthScore / 0.925);
     blendShapeMap.eyeWideLeft = m;
     blendShapeMap.eyeWideRight = m;
@@ -152,14 +165,17 @@
     blendShapeMap.browOuterUpLeft = m;
     blendShapeMap.browOuterUpRight = m;
 
-    // ── Frown channels → composite = frownScore ──
-    // frown = 0.40*browDown + 0.30*browInnerUp + 0.30*mouthFrown
+    // Frown → composite = frownScore
     var f = frownScore;
     blendShapeMap.browDownLeft = f;
     blendShapeMap.browDownRight = f;
     blendShapeMap.browInnerUp = f;
     blendShapeMap.mouthFrownLeft = f;
     blendShapeMap.mouthFrownRight = f;
+
+    // Eyes closed → (eyeBlinkL + eyeBlinkR) / 2 = eyesScore
+    blendShapeMap.eyeBlinkLeft = eyesScore;
+    blendShapeMap.eyeBlinkRight = eyesScore;
 
     return blendShapeMap;
   }
@@ -168,10 +184,11 @@
     getMouthOpenRatio: getMouthOpenRatio,
     getSmileRatio: getSmileRatio,
     getFrownRatio: getFrownRatio,
+    getEyesClosedRatio: getEyesClosedRatio,
     getEyebrowRaiseRatio: getEyebrowRaiseRatio,
     injectGeometryScores: injectGeometryScores,
     applySensitivity: applySensitivity,
   };
 
-  console.log('[brokeass] Geometry ready — smile + frown + open-mouth (surprise)');
+  console.log('[brokeass] Geometry ready — smile + frown + surprised + eyes');
 })();
