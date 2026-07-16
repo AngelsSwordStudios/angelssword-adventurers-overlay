@@ -369,8 +369,6 @@
   }
 
   // ── Threshold Sliders ───────────────────────────
-  // (rest of the original file continues unchanged below)
-
   function setupSlider(id, valueId, formatFn, onChange) {
     const slider = document.getElementById(id);
     const valueEl = document.getElementById(valueId);
@@ -514,10 +512,11 @@
   });
 
   // ── Reset to Defaults ───────────────────────────
+  // Updated for 4x more sensitive expression detection
   const DEFAULTS = {
-    'threshold-smile': { value: 20, display: 'val-smile', format: v => v },
-    'threshold-frown': { value: 25, display: 'val-frown', format: v => v },
-    'threshold-surprised': { value: 25, display: 'val-surprised', format: v => v },
+    'threshold-smile': { value: 5, display: 'val-smile', format: v => v },
+    'threshold-frown': { value: 6, display: 'val-frown', format: v => v },
+    'threshold-surprised': { value: 6, display: 'val-surprised', format: v => v },
     'threshold-eyes': { value: 55, display: 'val-eyes', format: v => v },
     'threshold-mic': { value: 12, display: 'val-mic', format: v => v },
     'threshold-typing': { value: 5, display: 'val-typing', format: v => v },
