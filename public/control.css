@@ -404,6 +404,41 @@ input[type="range"]::-webkit-slider-thumb:hover {
   transform: scale(1.15);
 }
 
+/* Compact gain sliders under Live Tracking meters */
+.meter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.slider-group.meter-gain {
+  margin-bottom: 10px;
+  margin-left: 80px; /* align under the bar (label is ~70px + gap) */
+  padding-right: 40px; /* leave room for the numeric value */
+}
+
+.slider-group.meter-gain label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.slider-group.meter-gain .slider-value {
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.slider-group.meter-gain input[type="range"] {
+  height: 5px;
+}
+
+.slider-group.meter-gain input[type="range"]::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+}
+
 .model-select {
   width: 100%;
   padding: 10px 14px;
