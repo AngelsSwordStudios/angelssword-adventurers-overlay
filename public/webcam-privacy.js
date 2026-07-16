@@ -2,6 +2,7 @@
 //  AS Adventurer — Webcam Preview Privacy Toggle
 //  Hides the live camera feed for privacy while
 //  MediaPipe face tracking continues uninterrupted.
+//  Default: preview OFF (hidden).
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -23,8 +24,10 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }
 
-  // Default: preview visible (false = not hidden)
-  let previewHidden = !!loadSettings().webcamPreviewHidden;
+  // Default OFF for privacy: hide preview unless user explicitly enabled it.
+  // webcamPreviewVisible === true → show feed; anything else → hidden.
+  const saved = loadSettings();
+  let previewVisible = saved.webcamPreviewVisible === true;
 
   function applyPreviewState() {
     const wrap = document.getElementById('webcam-preview-wrap');
@@ -32,24 +35,28 @@
     const btn = document.getElementById('btn-toggle-webcam-preview');
     if (!wrap || !overlay || !btn) return;
 
-    if (previewHidden) {
+    if (!previewVisible) {
       wrap.classList.add('privacy-on');
       overlay.style.display = 'flex';
+      overlay.setAttribute('aria-hidden', 'false');
       btn.textContent = '👁 Preview OFF';
       btn.classList.add('preview-off');
+      btn.classList.remove('preview-on');
       btn.title = 'Show camera preview (tracking stays on either way)';
     } else {
       wrap.classList.remove('privacy-on');
       overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
       btn.textContent = '👁 Preview ON';
+      btn.classList.add('preview-on');
       btn.classList.remove('preview-off');
       btn.title = 'Hide camera preview for privacy (tracking stays on)';
     }
   }
 
   function togglePreview() {
-    previewHidden = !previewHidden;
-    saveSettings({ webcamPreviewHidden: previewHidden });
+    previewVisible = !previewVisible;
+    saveSettings({ webcamPreviewVisible: previewVisible });
     applyPreviewState();
   }
 
@@ -64,7 +71,7 @@
       togglePreview();
     });
     applyPreviewState();
-    console.log('[privacy] Webcam preview toggle ready (hidden=' + previewHidden + ')');
+    console.log('[privacy] Webcam preview toggle ready (visible=' + previewVisible + ', default=off)');
   }
 
   if (document.readyState === 'loading') {
