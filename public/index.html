@@ -190,14 +190,14 @@
             <button class="btn btn-primary" id="btn-start-mic">Enable Microphone</button>
             <button class="btn btn-secondary" id="btn-stop-mic" style="display:none;">Disable</button>
             <div class="mic-display" id="mic-display" style="display:none;">
-              <div class="mic-status-row">
-                <span class="mic-voice-icon" id="mic-voice-icon">🔇</span>
-                <span class="mic-voice-label" id="mic-voice-label">Idle</span>
-              </div>
               <div class="meter-row" style="margin-top:10px;">
                 <span class="meter-label">Level</span>
                 <div class="meter-bar"><div class="meter-fill mic" id="meter-mic" style="width:0%"></div></div>
                 <span class="meter-value" id="meter-mic-val">0</span>
+              </div>
+              <div class="mic-status-row">
+                <span class="mic-voice-icon" id="mic-voice-icon">🔇</span>
+                <span class="mic-voice-label" id="mic-voice-label">Idle</span>
               </div>
             </div>
           </div>
@@ -217,7 +217,7 @@
             <div class="calib-row" id="calib-row">
               <button type="button" class="btn btn-primary btn-calib" id="btn-calibrate-neutral">📷 Calibrate Neutral</button>
               <button type="button" class="btn btn-secondary btn-calib-reset" id="btn-reset-calibration" style="display:none;">Reset</button>
-              <span class="calib-status calib-default" id="calib-status">Use Gain sliders below</span>
+              <span class="calib-status calib-default" id="calib-status">Geometry — use Gain sliders</span>
             </div>
 
             <div class="meters">
@@ -326,13 +326,13 @@
     </div>
   </div>
 
-  <script src="brokeass-geometry.js"></script>
+  <script src="geometry.js"></script>
   <script src="webcam-deadzone.js"></script>
   <script src="control.js"></script>
   <script src="gain-sliders.js"></script>
   <script src="webcam-privacy.js"></script>
   <script src="stock-defaults.js"></script>
-  <script src="webcam-brokeass-hook.js"></script>
+  <script src="webcam-geometry-hook.js"></script>
   <script src="source-gain-visibility.js"></script>
 </body>
 </html>
