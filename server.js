@@ -554,11 +554,20 @@ function broadcastAll(data) {
 
 // ── Expression Detection ────────────────────────────
 // Thresholds (can be adjusted via control panel)
+// 4x more sensitive than original defaults (20/25/25 → 5/6/6)
 let thresholds = {
-  smile: 20,
-  frown: 25,
-  surprised: 25,
+  smile: 5,
+  frown: 6,
+  surprised: 6,
   eyesClosed: 55
+};
+
+// Per-expression gain multipliers (MediaPipe raw composites rarely exceed ~32).
+// Adjustable in real-time from the Live Tracking panel.
+let expressionGains = {
+  smile: 3.0,
+  frown: 3.0,
+  surprised: 3.0
 };
 
 function detectExpression(blendShapes) {
@@ -605,18 +614,23 @@ function detectExpression(blendShapes) {
   const cheekSquint = (cheekSquintL + cheekSquintR) / 2;
   const eyeSquint   = (eyeSquintL + eyeSquintR) / 2;
   const mouthSmile  = (mouthSmileL + mouthSmileR) / 2;
-  const smile = (cheekSquint * 0.45) + (eyeSquint * 0.35) + (mouthSmile * 0.20);
+  let smile = (cheekSquint * 0.45) + (eyeSquint * 0.35) + (mouthSmile * 0.20);
 
   // Sad: brow furrow + inner brow raise + mouth frown
   const browDown    = (browDownL + browDownR) / 2;
   const mouthFrown  = (mouthFrownL + mouthFrownR) / 2;
-  const frown = (browDown * 0.40) + (browInnerUp * 0.30) + (mouthFrown * 0.30);
+  let frown = (browDown * 0.40) + (browInnerUp * 0.30) + (mouthFrown * 0.30);
 
   // Surprised: eyes wide open + jaw open (O-mouth) + raised brows
   // These are the OPPOSITE of happy (wide eyes vs squint, open mouth vs smile)
   const eyeWide   = (eyeWideL + eyeWideR) / 2;
   const browUp    = ((browOuterL + browOuterR) / 2 + browInnerUp) / 2;
-  const surprised = (eyeWide * 0.35) + (jawOpen * 0.35) + (browUp * 0.15) + (mouthFunnel * 0.15);
+  let surprised = (eyeWide * 0.35) + (jawOpen * 0.35) + (browUp * 0.15) + (mouthFunnel * 0.15);
+
+  // Apply per-expression gain so MediaPipe webcam scores can fill the 0-100 meter
+  smile     = Math.min(100, smile     * expressionGains.smile);
+  frown     = Math.min(100, frown     * expressionGains.frown);
+  surprised = Math.min(100, surprised * expressionGains.surprised);
 
   // ── Expression priority: eyes_closed > surprised > happy > sad > neutral
   if (eyesClosed > thresholds.eyesClosed) {
@@ -960,9 +974,10 @@ app.post('/api/connect-ifacial', (req, res) => {
   });
 });
 
-// ── API: Update thresholds ──────────────────────────
+// ── API: Update thresholds + expression gains ───────
 app.post('/api/thresholds', (req, res) => {
-  const { smile, frown, surprised, eyesClosed, expressionHold, exitBias } = req.body;
+  const { smile, frown, surprised, eyesClosed, expressionHold, exitBias,
+          smileGain, frownGain, surprisedGain } = req.body;
   // Validate all values as finite numbers within reasonable ranges
   const isNum = (v, min, max) => typeof v === 'number' && isFinite(v) && v >= min && v <= max;
   if (smile !== undefined) { if (!isNum(smile, 0, 100)) return res.status(400).json({ error: 'invalid smile threshold' }); thresholds.smile = smile; }
@@ -971,8 +986,12 @@ app.post('/api/thresholds', (req, res) => {
   if (eyesClosed !== undefined) { if (!isNum(eyesClosed, 0, 100)) return res.status(400).json({ error: 'invalid eyesClosed threshold' }); thresholds.eyesClosed = eyesClosed; }
   if (expressionHold !== undefined) { if (!isNum(expressionHold, 0, 30000)) return res.status(400).json({ error: 'invalid expressionHold' }); HYSTERESIS_MS = expressionHold; console.log(`[cfg] Expression hold: ${HYSTERESIS_MS}ms`); }
   if (exitBias !== undefined) { if (!isNum(exitBias, 0, 1)) return res.status(400).json({ error: 'invalid exitBias' }); EXIT_BIAS = exitBias; console.log(`[cfg] Exit bias: ${(EXIT_BIAS * 100).toFixed(0)}%`); }
-  console.log(`[cfg] Thresholds updated:`, thresholds);
-  res.json({ success: true, thresholds });
+  // Per-expression gain (1.0 – 6.0)
+  if (smileGain !== undefined) { if (!isNum(smileGain, 1, 6)) return res.status(400).json({ error: 'invalid smileGain' }); expressionGains.smile = smileGain; }
+  if (frownGain !== undefined) { if (!isNum(frownGain, 1, 6)) return res.status(400).json({ error: 'invalid frownGain' }); expressionGains.frown = frownGain; }
+  if (surprisedGain !== undefined) { if (!isNum(surprisedGain, 1, 6)) return res.status(400).json({ error: 'invalid surprisedGain' }); expressionGains.surprised = surprisedGain; }
+  console.log(`[cfg] Thresholds updated:`, thresholds, 'Gains:', expressionGains);
+  res.json({ success: true, thresholds, gains: expressionGains });
 });
 
 // ── Start (auto-find available port) ────────────────

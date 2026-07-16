@@ -1,27 +1,29 @@
-# ⚔️ AS Adventurer
+# ⚔️ AS Adventurer (MediaPipe Edition)
 
-**A free, open-source reactive overlay for streamers.** AS Adventurer bridges the gap between PNGtubing and VTube Studio — giving you expression-reactive characters without the cost or complexity of a full Live2D setup.
+**A free, open-source reactive overlay for streamers.**  
+This is a **MediaPipe-first** fork of [AS Adventurer](https://github.com/AngelsSwordStudios/angelssword-adventurers-overlay) by Angel's Sword Studios.
 
-It's not meant to replace either. If you want a quick, lightweight reactive avatar that responds to your face and voice, this is for you. If you need full Live2D rigging, use VTube Studio. If you just want a static PNG that bounces, use a PNGtuber tool. AS Adventurer sits in the middle — **animated expression swaps driven by real facial tracking**.
+**No VTube Studio, no iPhone, no paid apps required.**  
+Just open the control panel, click **Start Webcam**, and your face drives the character in real time using Google MediaPipe Face Landmarker (runs entirely in the browser).
 
-It also works great for **Discord collab reactives** — drop your character sprites in a folder and go.
+It still supports the original VTube Studio / iFacialMocap pipelines as optional advanced options.
 
-> Built by [Angel's Sword Studios](https://github.com/angelssword). Designed for creators on a budget.
+> Original project by [Angel's Sword Studios](https://github.com/angelssword). This fork prioritises accessibility — anyone with a webcam can use full expression tracking for free.
 
 ---
 
 ## What It Does
 
-Your iPhone (or webcam) tracks your face. AS Adventurer reads your expressions in real time and swaps between different animations on stream:
+Your **webcam** (or optional iPhone tracking) tracks your face. AS Adventurer reads your expressions in real time and swaps between different animations on stream:
 
-| Expression | What Triggers It |
-|:-----------|:-----------------|
-| 😊 Happy | Smiling (cheek + eye squint) |
-| 😢 Sad | Frowning (brow + mouth) |
-| 😮 Surprised | Wide eyes + raised brows |
-| 😑 Eyes Closed | Eyes shut for 1.5+ seconds |
-| 🎤 Speaking | Microphone volume |
-| ⌨️ Typing | Keyboard activity |
+| Expression     | What Triggers It                          |
+|:---------------|:------------------------------------------|
+| 😊 Happy       | Smiling (cheek + eye squint)              |
+| 😢 Sad         | Frowning (brow + mouth)                   |
+| 😮 Surprised   | Wide eyes + raised brows                  |
+| 😑 Eyes Closed | Eyes shut for 1.5+ seconds                |
+| 🎤 Speaking    | Microphone volume                         |
+| ⌨️ Typing      | Keyboard activity                         |
 
 Each state has its own idle and speaking animation. You provide the art — WebM, GIF, PNG, or MP4 — and AS Adventurer handles the rest.
 
@@ -33,8 +35,8 @@ On top of expressions, you can trigger **emotes** from the control panel — one
 
 ## Features
 
-- **Face tracking** — VTube Studio (iPhone), iFacialMocap (iPhone), or webcam via MediaPipe
-- **Voice detection** — microphone input with adjustable threshold
+- **Face tracking** — **Primary: Webcam + MediaPipe** (no phone needed). Optional: VTube Studio / iFacialMocap
+- **Voice detection** — microphone input with adjustable threshold + spectral typing detection
 - **Typing detection** — keyboard activity triggers a typing animation
 - **Multiple models** — switch characters on the fly from the control panel
 - **Emote system** — one-shot, held, and nested sub-animation emotes with sound effects
@@ -52,9 +54,10 @@ On top of expressions, you can trigger **emotes** from the control panel — one
 ### From Source
 
 ```bash
-# Clone the repo
-git clone https://github.com/angelssword/as-adventurer.git
-cd as-adventurer
+# Clone this MediaPipe fork
+git clone https://github.com/Manya3084/angelssword-adventurers-overlay-test.git
+cd angelssword-adventurers-overlay-test
+git checkout feature/mediapipe-primary
 
 # Install dependencies
 npm install
@@ -66,6 +69,14 @@ npm start
 Then open:
 - **Control Panel** → [http://localhost:3000](http://localhost:3000)
 - **OBS Overlay** → `http://localhost:3000/overlay.html` (add as Browser Source)
+
+**Recommended first run:**
+1. Open the Control Panel
+2. The **Webcam** tab is selected by default
+3. Click **Start Webcam** → allow camera access
+4. Smile / frown / open mouth and watch the live meters react
+5. Enable Microphone for speaking detection
+6. Drop your character assets into `public/assets/`
 
 ### From Release (no Node.js needed)
 
@@ -131,19 +142,40 @@ Emotes support **variants** — `intro.webm`, `intro2.webm`, `intro3.webm` play 
 
 ## Connecting Face Tracking
 
-### VTube Studio (iPhone)
-1. Open VTube Studio → Settings → 3rd Party PC Clients → Enable
-2. In the Control Panel, enter your iPhone's IP and click **Connect VTS**
-3. Phone and PC must be on the same WiFi network
+### 🟢 Recommended: Webcam + MediaPipe (no extra software)
 
-### iFacialMocap (iPhone)
+1. Open the Control Panel → **Webcam** tab (selected by default)
+2. Click **Start Webcam**
+3. Allow camera access when the browser asks
+4. Face tracking starts instantly — no phone, no apps, no IP addresses
+
+MediaPipe runs completely in your browser using WebAssembly + GPU (when available).  
+Your face never leaves the machine.
+
+**Tips for best results:**
+- Good lighting on your face
+- Camera at eye level
+- Avoid strong backlight
+- The live meters in the Control Panel show exactly what the system sees
+
+### Optional: VTube Studio (iPhone) — Advanced
+
+1. Open VTube Studio → Settings → 3rd Party PC Clients → Enable
+2. Switch to the **VTube Studio** tab in the Control Panel
+3. Enter your iPhone's IP and click **Connect VTS**
+4. Phone and PC must be on the same WiFi network
+
+### Optional: iFacialMocap (iPhone) — Advanced
+
 1. Open iFacialMocap on your iPhone
-2. In the Control Panel, enter your iPhone's IP and click **Connect iFacial**
+2. Switch to the **iFacialMocap** tab
+3. Enter your iPhone's IP and click **Connect iFacial**
 
 ### Microphone
+
 1. Select your mic from the dropdown in the Control Panel
 2. Click **Enable Microphone**
-3. Keep the Control Panel tab open while streaming
+3. Keep the Control Panel tab open while streaming (it does the mic analysis)
 
 ---
 
@@ -160,12 +192,14 @@ Emotes support **variants** — `intro.webm`, `intro2.webm`, `intro3.webm` play 
 
 ## Ports
 
-| Port | Protocol | Purpose |
-|:-----|:---------|:--------|
-| 3000 | HTTP/WS | Web server + WebSocket |
-| 21412 | UDP | VTube Studio (send) |
-| 11125 | UDP | VTube Studio (receive) |
-| 49983 | UDP | iFacialMocap |
+| Port  | Protocol | Purpose                          |
+|:------|:---------|:---------------------------------|
+| 3000  | HTTP/WS  | Web server + WebSocket           |
+| 21412 | UDP      | VTube Studio (send) — optional   |
+| 11125 | UDP      | VTube Studio (receive) — optional|
+| 49983 | UDP      | iFacialMocap — optional          |
+
+When using only MediaPipe + webcam, only port 3000 is used.
 
 ---
 
@@ -184,9 +218,22 @@ This creates `release/ASAdventurer/` with the EXE, launcher, README, and a bundl
 ## Tech Stack
 
 - **Server:** Node.js, Express, WebSocket (`ws`)
-- **Tracking:** UDP sockets (VTube Studio / iFacialMocap protocol parsing)
+- **Primary Tracking:** MediaPipe Face Landmarker (browser-side, WebAssembly)
+- **Optional Tracking:** UDP sockets (VTube Studio / iFacialMocap protocol parsing)
 - **Frontend:** Vanilla HTML/CSS/JS — no frameworks, no build step
 - **Packaging:** `pkg` for standalone EXE builds
+
+---
+
+## Differences from Upstream
+
+This fork (`angelssword-adventurers-overlay-test`) makes the following intentional changes:
+
+- **MediaPipe / Webcam is the primary and default tracking method**
+- Control panel opens with the Webcam tab selected
+- Improved help text and onboarding for zero-setup face tracking
+- VTube Studio and iFacialMocap remain fully supported as optional advanced modes
+- README rewritten for accessibility-first messaging
 
 ---
 
