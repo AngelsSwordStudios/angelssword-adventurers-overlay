@@ -11,7 +11,6 @@
 </head>
 <body>
   <div class="app">
-    <!-- Header -->
     <header class="header">
       <div class="header-brand">
         <img src="assets/Angelsword-Logo-white_25pct.webp" alt="Angel's Sword Studios" class="brand-logo">
@@ -27,10 +26,8 @@
     </header>
 
     <div class="main-grid">
-      <!-- Left Column: Connection & Tracking -->
       <div class="column">
 
-        <!-- Connection Card -->
         <div class="card">
           <div class="card-header">
             <h2>📡 Tracking Source</h2>
@@ -42,7 +39,6 @@
               <button class="source-tab" data-source="ifacial">iFacialMocap</button>
             </div>
 
-            <!-- Webcam (MediaPipe) — PRIMARY / DEFAULT -->
             <div class="source-panel active" id="panel-webcam">
               <p class="help-text">
                 <strong>Recommended — no phone or extra apps needed.</strong><br>
@@ -51,15 +47,14 @@
               </p>
               <button class="btn btn-primary" id="btn-start-webcam">Start Webcam</button>
               <button class="btn btn-secondary" id="btn-stop-webcam" style="display:none;">Stop Webcam</button>
-              
+
               <div class="webcam-status" id="webcam-status" style="margin-top:10px; font-size:13px; color:#94a3b8;">
                 Status: Idle
               </div>
-              
+
               <div class="webcam-container" id="webcam-container" style="display:none; margin-top:12px;">
                 <div class="webcam-preview-wrap" id="webcam-preview-wrap">
                   <video id="webcam-video" autoplay playsinline muted></video>
-                  <!-- Privacy overlay covers the video; tracking keeps using the video underneath -->
                   <div class="webcam-privacy-overlay" id="webcam-privacy-overlay" style="display:none;" aria-hidden="true">
                     <div class="webcam-privacy-inner">
                       <span class="webcam-privacy-icon">🔒</span>
@@ -80,7 +75,6 @@
               </div>
             </div>
 
-            <!-- VTube Studio (optional) -->
             <div class="source-panel" id="panel-vtube">
               <p class="help-text">
                 <strong>Optional advanced mode.</strong> Requires VTube Studio on an iPhone + same Wi-Fi network.
@@ -95,7 +89,6 @@
               <div class="connection-status" id="vts-status"></div>
             </div>
 
-            <!-- iFacialMocap (optional) -->
             <div class="source-panel" id="panel-ifacial">
               <p class="help-text">
                 <strong>Optional advanced mode.</strong> Requires iFacialMocap on an iPhone.
@@ -112,36 +105,38 @@
           </div>
         </div>
 
-        <!-- Thresholds Card -->
         <div class="card">
           <div class="card-header">
             <h2>🎚️ Expression Thresholds</h2>
           </div>
           <div class="card-body">
+            <p class="help-text" style="margin-bottom:10px;">
+              Stock MediaPipe thresholds. Prefer <strong>Gain</strong> sliders under Live Tracking to make expressions easier to start <em>and</em> easier to leave.
+            </p>
             <div class="slider-group">
               <label>
-                😊 Smile Sensitivity
-                <span class="slider-value" id="val-smile">5</span>
+                😊 Smile Threshold
+                <span class="slider-value" id="val-smile">20</span>
               </label>
-              <input type="range" min="5" max="80" value="5" id="threshold-smile">
+              <input type="range" min="5" max="80" value="20" id="threshold-smile">
             </div>
             <div class="slider-group">
               <label>
-                😢 Frown Sensitivity
-                <span class="slider-value" id="val-frown">6</span>
+                😢 Frown Threshold
+                <span class="slider-value" id="val-frown">25</span>
               </label>
-              <input type="range" min="5" max="80" value="6" id="threshold-frown">
+              <input type="range" min="5" max="80" value="25" id="threshold-frown">
             </div>
             <div class="slider-group">
               <label>
-                😮 Surprised Sensitivity
-                <span class="slider-value" id="val-surprised">6</span>
+                😮 Surprised Threshold
+                <span class="slider-value" id="val-surprised">25</span>
               </label>
-              <input type="range" min="5" max="80" value="6" id="threshold-surprised">
+              <input type="range" min="5" max="80" value="25" id="threshold-surprised">
             </div>
             <div class="slider-group">
               <label>
-                😑 Eyes Closed Sensitivity
+                😑 Eyes Closed Threshold
                 <span class="slider-value" id="val-eyes">55</span>
               </label>
               <input type="range" min="20" max="90" value="55" id="threshold-eyes">
@@ -166,7 +161,7 @@
                 💬 Speaking Hold
                 <span class="slider-value" id="val-speaking-hold">400ms</span>
               </label>
-              <input type="range" min="100" max="1500" step="50" value="400" id="threshold-speaking-hold" title="How long the speaking animation stays active after silence. Higher = holds through longer pauses (good for stuttering). Lower = snappier response.">
+              <input type="range" min="100" max="1500" step="50" value="400" id="threshold-speaking-hold" title="How long speaking stays active after silence.">
             </div>
             <div class="slider-group">
               <label>
@@ -180,14 +175,14 @@
                 🎭 Expression Hold
                 <span class="slider-value" id="val-expression-hold">300ms</span>
               </label>
-              <input type="range" min="100" max="1500" step="50" value="300" id="threshold-expression-hold" title="How long a new expression must be stable before switching. Higher = more stable but slower to react. Lower = more responsive but may flicker.">
+              <input type="range" min="100" max="1500" step="50" value="300" id="threshold-expression-hold" title="How long a new expression must be stable before switching.">
             </div>
             <div class="slider-group">
               <label>
                 🔒 Exit Resistance
-                <span class="slider-value" id="val-exit-bias">60%</span>
+                <span class="slider-value" id="val-exit-bias">40%</span>
               </label>
-              <input type="range" min="20" max="90" step="5" value="60" id="threshold-exit-bias" title="How far an emotion score must drop before leaving the current expression. 60% = must drop to 60% of entry threshold. Higher = stickier emotions, lower = easier to switch away.">
+              <input type="range" min="20" max="90" step="5" value="40" id="threshold-exit-bias" title="How far a score must drop before leaving the current expression. Lower = easier return to neutral.">
             </div>
             <div class="slider-group">
               <label>
@@ -202,7 +197,7 @@
                 ✨ Transition Duration
                 <span class="slider-value" id="val-swap-duration">200ms</span>
               </label>
-              <input type="range" min="0" max="1000" step="50" value="200" id="threshold-swap-duration" title="Duration of the blur-pop or crossfade transition between expression changes. 0 = instant swap.">
+              <input type="range" min="0" max="1000" step="50" value="200" id="threshold-swap-duration">
             </div>
             <div class="slider-group">
               <label>
@@ -213,15 +208,13 @@
                 ⚠️ Causes ghosting on transparent OBS backgrounds
               </small>
             </div>
-            <button class="btn btn-secondary" id="btn-reset-thresholds" style="margin-top: 1rem; width: 100%; opacity: 0.7;" title="Reset all thresholds to recommended defaults">↩ Reset to Defaults</button>
+            <button class="btn btn-secondary" id="btn-reset-thresholds" style="margin-top: 1rem; width: 100%; opacity: 0.7;" title="Reset to MediaPipe stock defaults">↩ Reset to MediaPipe Defaults</button>
           </div>
         </div>
       </div>
 
-      <!-- Right Column -->
       <div class="column">
 
-        <!-- Mic Detection Card -->
         <div class="card">
           <div class="card-header">
             <h2>🎤 Microphone</h2>
@@ -250,7 +243,6 @@
           </div>
         </div>
 
-        <!-- Live Status Card -->
         <div class="card">
           <div class="card-header">
             <h2>📊 Live Tracking</h2>
@@ -262,26 +254,24 @@
               <div class="expression-label" id="current-expression-label">Neutral</div>
             </div>
 
-            <!-- Neutral calibration — baselines Smile + Frown + Surprised -->
             <div class="calib-row" id="calib-row">
               <button type="button" class="btn btn-primary btn-calib" id="btn-calibrate-neutral"
-                title="Hold a relaxed neutral face, then click. Snapshots resting blendshapes for Smile, Frown, and Surprised as the zero baseline.">
+                title="Optional: snapshot resting face as a zero baseline. Leave off for pure MediaPipe defaults.">
                 📷 Calibrate Neutral
               </button>
               <button type="button" class="btn btn-secondary btn-calib-reset" id="btn-reset-calibration" style="display:none;"
-                title="Clear personal calibration and use built-in default floors for all expressions">
+                title="Clear optional calibration">
                 Reset
               </button>
-              <span class="calib-status calib-default" id="calib-status">Using default floors (all expressions)</span>
+              <span class="calib-status calib-default" id="calib-status">MediaPipe defaults — use Gain sliders</span>
             </div>
             <p class="help-text calib-help">
-              Start webcam → relax your face → click <strong>Calibrate Neutral</strong>.
-              Sets the zero baseline for <strong>😊 Smile</strong>, <strong>😢 Frown</strong>, and <strong>😮 Surprised</strong> together.
-              All three meters should sit near 0. Re-calibrate if lighting changes.
+              <strong>Gain</strong> (below) amplifies each expression for <em>both</em> starting it and returning to neutral.
+              1.0× = raw MediaPipe. Raise gain if meters barely move; lower if they stick on.
+              Calibrate is optional.
             </p>
 
             <div class="meters">
-              <!-- Smile + Gain -->
               <div class="meter-block">
                 <div class="meter-row">
                   <span class="meter-label">😊 Smile</span>
@@ -291,13 +281,12 @@
                 <div class="slider-group meter-gain">
                   <label>
                     Gain
-                    <span class="slider-value" id="val-gain-smile">3.0×</span>
+                    <span class="slider-value" id="val-gain-smile">1.0×</span>
                   </label>
-                  <input type="range" min="1" max="6" step="0.1" value="3.0" id="gain-smile" title="Multiplies the Smile score so MediaPipe values fill the meter">
+                  <input type="range" min="0.5" max="6" step="0.1" value="1.0" id="gain-smile" title="Amplifies smile for enter and return (1.0 = MediaPipe raw)">
                 </div>
               </div>
 
-              <!-- Frown + Gain -->
               <div class="meter-block">
                 <div class="meter-row">
                   <span class="meter-label">😢 Frown</span>
@@ -307,13 +296,12 @@
                 <div class="slider-group meter-gain">
                   <label>
                     Gain
-                    <span class="slider-value" id="val-gain-frown">3.0×</span>
+                    <span class="slider-value" id="val-gain-frown">1.0×</span>
                   </label>
-                  <input type="range" min="1" max="6" step="0.1" value="3.0" id="gain-frown" title="Multiplies the Frown score so MediaPipe values fill the meter">
+                  <input type="range" min="0.5" max="6" step="0.1" value="1.0" id="gain-frown" title="Amplifies frown for enter and return (1.0 = MediaPipe raw)">
                 </div>
               </div>
 
-              <!-- Surprised + Gain -->
               <div class="meter-block">
                 <div class="meter-row">
                   <span class="meter-label">😮 Surprised</span>
@@ -323,13 +311,12 @@
                 <div class="slider-group meter-gain">
                   <label>
                     Gain
-                    <span class="slider-value" id="val-gain-surprised">3.0×</span>
+                    <span class="slider-value" id="val-gain-surprised">1.0×</span>
                   </label>
-                  <input type="range" min="1" max="6" step="0.1" value="3.0" id="gain-surprised" title="Multiplies the Surprised score so MediaPipe values fill the meter">
+                  <input type="range" min="0.5" max="6" step="0.1" value="1.0" id="gain-surprised" title="Amplifies surprised for enter and return (1.0 = MediaPipe raw)">
                 </div>
               </div>
 
-              <!-- Eyes (no gain needed — already reaches high values) -->
               <div class="meter-row">
                 <span class="meter-label">😑 Eyes</span>
                 <div class="meter-bar"><div class="meter-fill eyes" id="meter-eyes" style="width:0%"></div></div>
@@ -339,7 +326,6 @@
           </div>
         </div>
 
-        <!-- Model Selector Card -->
         <div class="card">
           <div class="card-header">
             <h2>🎭 Model Selector</h2>
@@ -360,7 +346,6 @@
           </div>
         </div>
 
-        <!-- State Override Card -->
         <div class="card">
           <div class="card-header">
             <h2>🎭 State Override</h2>
@@ -379,7 +364,6 @@
           </div>
         </div>
 
-        <!-- Emotes Card -->
         <div class="card">
           <div class="card-header">
             <h2>🎬 Emotes</h2>
@@ -392,15 +376,12 @@
           </div>
         </div>
 
-        <!-- Assets Card -->
         <div class="card">
           <div class="card-header">
             <h2>🖼️ Assets Status</h2>
           </div>
           <div class="card-body">
-            <div class="assets-grid" id="assets-grid">
-              <!-- Populated by JS -->
-            </div>
+            <div class="assets-grid" id="assets-grid"></div>
             <div class="help-text" style="margin-top: 12px;">
               States:
               <code>neutral_idle</code>, <code>neutral_speaking</code>,
@@ -408,13 +389,11 @@
               <code>sad_idle</code>, <code>sad_speaking</code>,
               <code>surprised_idle</code>, <code>surprised_speaking</code>,
               <code>typing</code>, <code>eyes_closed</code><br>
-              <em>Typing is optional — a single animation that plays when keyboard input is detected.</em><br>
               Supported: <code>.webm</code> <code>.webp</code> <code>.gif</code> <code>.png</code> <code>.mp4</code>
             </div>
           </div>
         </div>
 
-        <!-- OBS Link Card -->
         <div class="card card-highlight">
           <div class="card-header">
             <h2>🎬 OBS Browser Source</h2>
@@ -434,10 +413,11 @@
     </div>
   </div>
 
-  <!-- deadzone MUST load before control.js so WebSocket.send is patched first -->
+  <!-- pipeline (gain) patches WebSocket first; control next; stock last forces defaults once -->
   <script src="webcam-deadzone.js"></script>
   <script src="control.js"></script>
   <script src="gain-sliders.js"></script>
   <script src="webcam-privacy.js"></script>
+  <script src="stock-defaults.js"></script>
 </body>
 </html>
