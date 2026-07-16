@@ -415,6 +415,8 @@
     </div>
   </div>
 
+  <!-- deadzone MUST load before control.js so WebSocket.send is patched first -->
+  <script src="webcam-deadzone.js"></script>
   <script src="control.js"></script>
   <script src="gain-sliders.js"></script>
   <script src="webcam-privacy.js"></script>
