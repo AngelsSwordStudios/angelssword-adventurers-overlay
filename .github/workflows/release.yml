@@ -82,7 +82,7 @@ jobs:
             ### What's included
             - Standalone `ASAdventurer.exe` (no Node install required)
             - Control panel with Gain sliders (smile / frown / surprised / eyes)
-            - Landmark geometry tracking (BrokeAss-style)
+            - Landmark geometry tracking
             - Webcam privacy toggle
 
             Verify integrity with `CHECKSUM.txt` if included.
