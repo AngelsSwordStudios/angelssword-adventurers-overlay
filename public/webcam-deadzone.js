@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════
 //  Pipeline: optional floors + live gain
 //  When BrokeAss geometry is present (_geometry=1),
-//  smile/surprised are already sensitivity-scaled —
-//  do NOT multiply again.
+//  smile / frown / surprised are already sensitivity-
+//  scaled — do NOT multiply again.
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -118,28 +118,19 @@
     if (!map || typeof map !== 'object') return map;
     const out = { ...map };
 
-    // BrokeAss geometry path: smile/surprised already have sensitivity applied
+    // BrokeAss geometry: smile/frown/surprised already have sensitivity
     const geometryMode = !!out._geometry;
 
-    // Optional floors (usually 0)
     for (const [k, floor] of Object.entries(floors)) {
       if (out[k] === undefined || !(floor > 0)) continue;
       out[k] = Math.max(0, Number(out[k]) - floor);
     }
 
     if (geometryMode) {
-      // Only apply gain to frown keys (smile/surprised stuffed + pre-gained)
-      const gains = readGains();
-      if (gains.frown !== 1.0) {
-        for (const k of FROWN_KEYS) {
-          if (out[k] === undefined) continue;
-          out[k] = Math.min(100, Math.max(0, Number(out[k]) * gains.frown));
-        }
-      }
+      // No re-gain — geometry inject already applied × sliders
       return out;
     }
 
-    // Legacy blendshape path: gain all expression keys
     const gains = readGains();
     for (const k of Object.keys(out)) {
       let g = 1.0;
@@ -322,7 +313,7 @@
     window.AS_resetCalibration = resetCalibration;
     window.AS_getDeadzoneFloors = () => ({ ...floors, __calibrated: isCalibrated, __gains: readGains() });
     window.AS_readGains = readGains;
-    console.log('[pipeline] Ready — BrokeAss geometry aware');
+    console.log('[pipeline] Ready — geometry skips re-gain for all three');
   }
 
   if (document.readyState === 'loading') {
