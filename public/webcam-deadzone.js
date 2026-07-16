@@ -1,14 +1,8 @@
 // ═══════════════════════════════════════════════════
-//  AS Adventurer — Pipeline: optional floors + live gain
-//
-//  Gain source (priority):
-//    1) window.AS_GAINS  (set live by gain-sliders.js)
-//    2) #gain-* slider DOM values
-//    3) localStorage
-//    4) 1.0 fallback
-//
-//  Applied to blendshapes BEFORE server composites so
-//  enter + return both scale with the slider.
+//  Pipeline: optional floors + live gain
+//  When BrokeAss geometry is present (_geometry=1),
+//  smile/surprised are already sensitivity-scaled —
+//  do NOT multiply again.
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -47,10 +41,6 @@
   let calibratedAt = null;
   let calibrating = false;
 
-  // Lightweight debug: last applied gains + sample scaled key
-  let _lastLoggedGain = '';
-  let _frameCount = 0;
-
   function loadSettings() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
@@ -68,12 +58,10 @@
   function clampGain(v) {
     const n = Number(v);
     if (!isFinite(n)) return 1.0;
-    return Math.min(6, Math.max(0.5, n));
+    return Math.min(5, Math.max(0.5, n));
   }
 
-  /** Live gains — prefer in-memory object from gain-sliders.js */
   function readGains() {
-    // 1) Live object (updated on every slider tick)
     if (window.AS_GAINS && typeof window.AS_GAINS === 'object') {
       return {
         smile: clampGain(window.AS_GAINS.smile),
@@ -81,8 +69,6 @@
         surprised: clampGain(window.AS_GAINS.surprised),
       };
     }
-
-    // 2) DOM sliders
     const dom = (id) => {
       const el = document.getElementById(id);
       if (!el) return null;
@@ -99,8 +85,6 @@
         surprised: clampGain(dSurp ?? 1),
       };
     }
-
-    // 3) localStorage
     const s = loadSettings();
     const g = s.gains || {};
     const t = s.thresholds || {};
@@ -133,15 +117,30 @@
   function applyPipeline(map) {
     if (!map || typeof map !== 'object') return map;
     const out = { ...map };
-    const gains = readGains();
 
-    // Optional floors
+    // BrokeAss geometry path: smile/surprised already have sensitivity applied
+    const geometryMode = !!out._geometry;
+
+    // Optional floors (usually 0)
     for (const [k, floor] of Object.entries(floors)) {
       if (out[k] === undefined || !(floor > 0)) continue;
       out[k] = Math.max(0, Number(out[k]) - floor);
     }
 
-    // Live gain on expression keys
+    if (geometryMode) {
+      // Only apply gain to frown keys (smile/surprised stuffed + pre-gained)
+      const gains = readGains();
+      if (gains.frown !== 1.0) {
+        for (const k of FROWN_KEYS) {
+          if (out[k] === undefined) continue;
+          out[k] = Math.min(100, Math.max(0, Number(out[k]) * gains.frown));
+        }
+      }
+      return out;
+    }
+
+    // Legacy blendshape path: gain all expression keys
+    const gains = readGains();
     for (const k of Object.keys(out)) {
       let g = 1.0;
       if (SMILE_SET.has(k)) g = gains.smile;
@@ -153,15 +152,6 @@
       if (!isFinite(raw)) continue;
       out[k] = Math.min(100, Math.max(0, raw * g));
     }
-
-    // Occasional debug log when gain changes
-    _frameCount++;
-    const sig = gains.smile + ',' + gains.frown + ',' + gains.surprised;
-    if (sig !== _lastLoggedGain && _frameCount % 30 === 0) {
-      _lastLoggedGain = sig;
-      console.log('[pipeline] applying gains', gains);
-    }
-
     return out;
   }
 
@@ -200,10 +190,8 @@
       if (done) done(r);
       return r;
     }
-
     calibrating = true;
     updateCalibUI();
-
     const finish = () => {
       calibrating = false;
       const avg = averageRecent(15);
@@ -213,29 +201,20 @@
         if (done) done(r);
         return r;
       }
-
       const snapshot = {};
       for (const key of ALL_KEYS) {
         const v = Number(avg[key]);
-        snapshot[key] = isFinite(v)
-          ? Math.min(MAX_FLOOR, Math.max(0, v + PAD))
-          : 0;
+        snapshot[key] = isFinite(v) ? Math.min(MAX_FLOOR, Math.max(0, v + PAD)) : 0;
       }
-
       floors = { ...DEFAULT_FLOORS, ...snapshot };
       isCalibrated = true;
       calibratedAt = new Date().toISOString();
-      saveSettings({
-        [CAL_KEY]: { floors: snapshot, at: calibratedAt, version: 6 },
-      });
-
-      console.log('[pipeline] Optional calibration applied', snapshot);
+      saveSettings({ [CAL_KEY]: { floors: snapshot, at: calibratedAt, version: 6 } });
       updateCalibUI();
       const r = { ok: true, message: 'Calibrated', floors: snapshot };
       if (done) done(r);
       return r;
     };
-
     if (rawHistory.length >= 8) return finish();
     setTimeout(finish, 450);
     return { ok: true, pending: true, message: 'Sampling…' };
@@ -249,29 +228,23 @@
     delete s[CAL_KEY];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
     updateCalibUI();
-    return { ok: true, message: 'MediaPipe defaults (no floors)' };
+    return { ok: true, message: 'Defaults' };
   }
 
   function updateCalibUI() {
     const statusEl = document.getElementById('calib-status');
     const btnCal = document.getElementById('btn-calibrate-neutral');
     const btnReset = document.getElementById('btn-reset-calibration');
-
     if (statusEl) {
       if (calibrating) {
         statusEl.textContent = 'Sampling… hold neutral';
         statusEl.classList.remove('calib-ok', 'calib-default');
       } else if (isCalibrated) {
-        const when = calibratedAt
-          ? new Date(calibratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : '';
-        statusEl.textContent = when
-          ? `Optional baseline ✓ (${when})`
-          : 'Optional baseline ✓';
+        statusEl.textContent = 'Optional baseline ✓';
         statusEl.classList.add('calib-ok');
         statusEl.classList.remove('calib-default');
       } else {
-        statusEl.textContent = 'MediaPipe defaults — use Gain sliders';
+        statusEl.textContent = 'BrokeAss geometry — use Gain (×) sliders';
         statusEl.classList.add('calib-default');
         statusEl.classList.remove('calib-ok');
       }
@@ -295,7 +268,6 @@
     }, 1800);
   }
 
-  // Patch WebSocket.send so every webcam_tracking message is scaled
   const proto = window.WebSocket && window.WebSocket.prototype;
   if (proto && !proto.__asDeadzonePatched) {
     const origSend = proto.send;
@@ -316,15 +288,12 @@
       return origSend.call(this, data);
     };
     proto.__asDeadzonePatched = true;
-    console.log('[pipeline] WebSocket.send patched for live gain');
   }
 
   function initUI() {
     restoreCalibration();
-
     const btnCal = document.getElementById('btn-calibrate-neutral');
     const btnReset = document.getElementById('btn-reset-calibration');
-
     if (btnCal) {
       btnCal.dataset.label = btnCal.textContent;
       btnCal.addEventListener('click', (e) => {
@@ -338,7 +307,6 @@
         }
       });
     }
-
     if (btnReset) {
       btnReset.addEventListener('click', (e) => {
         e.preventDefault();
@@ -346,21 +314,15 @@
         flashButton(btnReset, true, 'Defaults');
       });
     }
-
     window.AS_calibrateNeutral = () =>
       new Promise((resolve) => {
         const r = calibrateNeutral(resolve);
         if (r && !r.pending) resolve(r);
       });
     window.AS_resetCalibration = resetCalibration;
-    window.AS_getDeadzoneFloors = () => ({
-      ...floors,
-      __calibrated: isCalibrated,
-      __gains: readGains(),
-    });
+    window.AS_getDeadzoneFloors = () => ({ ...floors, __calibrated: isCalibrated, __gains: readGains() });
     window.AS_readGains = readGains;
-
-    console.log('[pipeline] Ready — gains from AS_GAINS / sliders / storage');
+    console.log('[pipeline] Ready — BrokeAss geometry aware');
   }
 
   if (document.readyState === 'loading') {
