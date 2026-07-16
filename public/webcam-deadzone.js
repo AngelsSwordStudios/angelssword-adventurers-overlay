@@ -1,13 +1,14 @@
 // ═══════════════════════════════════════════════════
 //  AS Adventurer — Webcam neutral deadzone + calibration
 //
-//  One "Calibrate Neutral" click baselines ALL three
-//  expression groups used by the meters:
-//    😊 Smile  ·  😢 Frown  ·  😮 Surprised
+//  Calibrate Neutral baselines Smile + Frown + Surprised.
 //
-//  We average several raw frames, set per-key floors,
-//  subtract them on every webcam_tracking message
-//  (before server gain), and persist to localStorage.
+//  Fix (frown stuck ~20–30):
+//  MediaPipe often reports high resting browInnerUp/browDown.
+//  Old code capped frown floors at ~8, so residual never
+//  zeroed and boost locked the meter mid-range. Floors can
+//  now track true resting values; boost only applies to
+//  meaningful residual above the floor.
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -16,7 +17,6 @@
   const STORAGE_KEY = 'as-adventurer-settings';
   const CAL_KEY = 'neutralCalibration';
 
-  // ── Expression key groups (MediaPipe camelCase 0–100) ──
   const SMILE_KEYS = [
     'mouthSmileLeft', 'mouthSmileRight',
     'cheekSquintLeft', 'cheekSquintRight',
@@ -32,32 +32,27 @@
     'jawOpen',
     'browOuterUpLeft', 'browOuterUpRight',
     'mouthFunnel',
-    // browInnerUp also used in surprised composite on server
   ];
 
   const FROWN_KEY_SET = new Set(FROWN_KEYS);
   const SMILE_KEY_SET = new Set(SMILE_KEYS);
   const SURPRISED_KEY_SET = new Set(SURPRISED_KEYS);
-
-  // All keys we ever floor / calibrate
   const ALL_KEYS = [...new Set([...SMILE_KEYS, ...FROWN_KEYS, ...SURPRISED_KEYS])];
 
-  // Built-in floors when user has not calibrated yet
+  // Defaults used only when user has NOT calibrated.
+  // Frown defaults stay moderate — real zeroing needs Calibrate.
   const DEFAULT_FLOORS = {
-    // Smile
     mouthSmileLeft: 12,
     mouthSmileRight: 12,
     cheekSquintLeft: 14,
     cheekSquintRight: 14,
     eyeSquintLeft: 8,
     eyeSquintRight: 8,
-    // Frown (low — MediaPipe sad range is weak)
-    browDownLeft: 5,
-    browDownRight: 5,
-    browInnerUp: 4,
-    mouthFrownLeft: 4,
-    mouthFrownRight: 4,
-    // Surprised
+    browDownLeft: 8,
+    browDownRight: 8,
+    browInnerUp: 10, // often elevated at rest on MediaPipe
+    mouthFrownLeft: 6,
+    mouthFrownRight: 6,
     eyeWideLeft: 5,
     eyeWideRight: 5,
     jawOpen: 5,
@@ -66,41 +61,34 @@
     mouthFunnel: 5,
   };
 
-  // Hard caps so a bad snapshot never permanently kills an expression
+  // Allow calibration to track true resting values (was 8–10 — too low!)
   const MAX_FLOOR = {
-    mouthSmileLeft: 22, mouthSmileRight: 22,
-    cheekSquintLeft: 22, cheekSquintRight: 22,
-    eyeSquintLeft: 16, eyeSquintRight: 16,
-    browDownLeft: 10, browDownRight: 10,
-    browInnerUp: 8,
-    mouthFrownLeft: 8, mouthFrownRight: 8,
-    eyeWideLeft: 12, eyeWideRight: 12,
-    jawOpen: 12,
-    browOuterUpLeft: 12, browOuterUpRight: 12,
-    mouthFunnel: 12,
+    mouthSmileLeft: 40, mouthSmileRight: 40,
+    cheekSquintLeft: 40, cheekSquintRight: 40,
+    eyeSquintLeft: 30, eyeSquintRight: 30,
+    browDownLeft: 45, browDownRight: 45,
+    browInnerUp: 45,
+    mouthFrownLeft: 35, mouthFrownRight: 35,
+    eyeWideLeft: 30, eyeWideRight: 30,
+    jawOpen: 30,
+    browOuterUpLeft: 30, browOuterUpRight: 30,
+    mouthFunnel: 30,
   };
 
-  const PADDING = {
-    smile: 2,
-    frown: 1,
-    surprised: 1,
-  };
+  const PADDING = { smile: 2.5, frown: 2.5, surprised: 2, other: 1.5 };
 
-  // After floor: boost residual so weak MediaPipe ranges can fill meters
-  const BOOST = {
-    smile: 1.0,
-    frown: 1.85,
-    surprised: 1.35,
-  };
+  // Only boost residual that is clearly above noise (after floor).
+  // When calibrated, mild boost; when not, slightly stronger for frown.
+  const BOOST_ABOVE = 4; // don't boost residual ≤ this
+  const BOOST = { smile: 1.0, frown: 1.45, surprised: 1.25, other: 1.0 };
 
-  // Multi-frame sample for stable calibration
-  const SAMPLE_FRAMES = 12;
-  const SAMPLE_MS = 450;
-  const HISTORY_MAX = 30;
+  const SAMPLE_FRAMES = 15;
+  const SAMPLE_MS = 500;
+  const HISTORY_MAX = 40;
 
   let floors = { ...DEFAULT_FLOORS };
   let lastRawBlendshapes = null;
-  let rawHistory = []; // ring of recent raw maps
+  let rawHistory = [];
   let isCalibrated = false;
   let calibratedAt = null;
   let calibrating = false;
@@ -127,27 +115,33 @@
   }
 
   function clampFloor(key, value) {
-    const max = MAX_FLOOR[key] != null ? MAX_FLOOR[key] : 15;
+    const max = MAX_FLOOR[key] != null ? MAX_FLOOR[key] : 40;
     return Math.max(0, Math.min(max, value));
   }
 
   function restoreCalibration() {
     const s = loadSettings();
     const cal = s[CAL_KEY];
-    if (cal && cal.floors && typeof cal.floors === 'object') {
+    // v5+ only — drop old calibrations that used broken low max floors
+    if (cal && cal.floors && typeof cal.floors === 'object' && (cal.version || 0) >= 5) {
       const fixed = {};
       for (const [k, v] of Object.entries(cal.floors)) {
         fixed[k] = clampFloor(k, Number(v) || 0);
       }
-      // Ensure every expression group key exists (merge defaults for missing)
       floors = { ...DEFAULT_FLOORS, ...fixed };
       for (const k of ALL_KEYS) {
         if (floors[k] === undefined) floors[k] = DEFAULT_FLOORS[k] || 0;
       }
       isCalibrated = true;
       calibratedAt = cal.at || null;
-      console.log('[deadzone] Restored calibration (smile+frown+surprised) from', calibratedAt || 'storage');
+      console.log('[deadzone] Restored v' + cal.version + ' calibration', calibratedAt, floors);
     } else {
+      // Invalidate stale calibrations from broken floor-cap era
+      if (cal) {
+        delete s[CAL_KEY];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+        console.log('[deadzone] Cleared outdated calibration (re-calibrate for frown fix)');
+      }
       floors = { ...DEFAULT_FLOORS };
       isCalibrated = false;
       calibratedAt = null;
@@ -159,14 +153,17 @@
     if (!map || typeof map !== 'object') return map;
     const out = { ...map };
 
-    // Apply floors for every calibrated / default key
     for (const [k, floor] of Object.entries(floors)) {
       if (out[k] === undefined) continue;
       let v = Math.max(0, Number(out[k]) - floor);
+
+      // Boost only meaningful residual (not the stuck mid-band noise)
       const g = groupOf(k);
       const boost = BOOST[g] || 1;
-      if (boost !== 1 && v > 0) {
-        v = Math.min(100, v * boost);
+      if (boost > 1 && v > BOOST_ABOVE) {
+        // Scale only the part above noise floor
+        v = BOOST_ABOVE + (v - BOOST_ABOVE) * boost;
+        v = Math.min(100, v);
       }
       out[k] = v;
     }
@@ -178,7 +175,6 @@
     if (rawHistory.length > HISTORY_MAX) rawHistory.shift();
   }
 
-  /** Average recent raw frames for stable baselines */
   function averageRecent(frames) {
     const slice = rawHistory.slice(-frames);
     if (slice.length === 0 && lastRawBlendshapes) slice.push(lastRawBlendshapes);
@@ -187,18 +183,10 @@
     const sums = {};
     const counts = {};
     for (const frame of slice) {
-      for (const k of ALL_KEYS) {
-        const v = Number(frame[k]);
+      for (const [k, raw] of Object.entries(frame)) {
+        const v = Number(raw);
         if (!isFinite(v)) continue;
         sums[k] = (sums[k] || 0) + v;
-        counts[k] = (counts[k] || 0) + 1;
-      }
-      // Also pick up any extra keys present
-      for (const [k, v] of Object.entries(frame)) {
-        if (sums[k] !== undefined) continue;
-        const n = Number(v);
-        if (!isFinite(n)) continue;
-        sums[k] = (sums[k] || 0) + n;
         counts[k] = (counts[k] || 0) + 1;
       }
     }
@@ -212,31 +200,46 @@
   function buildSnapshotFromAverage(avg) {
     const snapshot = {};
     let smileN = 0, frownN = 0, surprisedN = 0;
+    const debug = { smile: {}, frown: {}, surprised: {} };
 
+    // Always cover ALL expression keys
     for (const key of ALL_KEYS) {
       const v = Number(avg[key]);
-      if (!isFinite(v)) {
-        // Still set a minimal floor from defaults so group is covered
-        snapshot[key] = DEFAULT_FLOORS[key] || 0;
-        continue;
-      }
       const g = groupOf(key);
-      const pad = PADDING[g] != null ? PADDING[g] : 1;
-      const rawFloor = v > 0.5 ? v + pad : pad * 0.5;
-      snapshot[key] = clampFloor(key, rawFloor);
+      const pad = PADDING[g] != null ? PADDING[g] : PADDING.other;
 
-      if (g === 'smile') smileN++;
-      else if (g === 'frown') frownN++;
-      else if (g === 'surprised') surprisedN++;
+      let floorVal;
+      if (isFinite(v)) {
+        // Floor = resting average + padding (this is what zeros the meter)
+        floorVal = clampFloor(key, Math.max(0, v) + pad);
+      } else {
+        floorVal = DEFAULT_FLOORS[key] || 0;
+      }
+      snapshot[key] = floorVal;
+
+      if (g === 'smile') {
+        smileN++;
+        debug.smile[key] = { raw: isFinite(v) ? +v.toFixed(1) : null, floor: +floorVal.toFixed(1) };
+      } else if (g === 'frown') {
+        frownN++;
+        debug.frown[key] = { raw: isFinite(v) ? +v.toFixed(1) : null, floor: +floorVal.toFixed(1) };
+      } else if (g === 'surprised') {
+        surprisedN++;
+        debug.surprised[key] = { raw: isFinite(v) ? +v.toFixed(1) : null, floor: +floorVal.toFixed(1) };
+      }
     }
 
-    return { snapshot, smileN, frownN, surprisedN };
+    // Also floor any other elevated keys present in the average
+    for (const [k, v] of Object.entries(avg)) {
+      if (snapshot[k] !== undefined) continue;
+      const n = Number(v);
+      if (!isFinite(n) || n < 3) continue;
+      snapshot[k] = clampFloor(k, n + PADDING.other);
+    }
+
+    return { snapshot, smileN, frownN, surprisedN, debug };
   }
 
-  /**
-   * Multi-frame calibrate for Smile + Frown + Surprised.
-   * Returns a Promise-like result via callback path (sync after short wait).
-   */
   function calibrateNeutral(done) {
     if (calibrating) {
       const r = { ok: false, message: 'Calibration already in progress' };
@@ -256,12 +259,8 @@
     calibrating = true;
     updateCalibUI();
 
-    // Prefer averaging frames we already have; if few, wait briefly for more
-    const need = SAMPLE_FRAMES;
-    const startLen = rawHistory.length;
-
     const finish = () => {
-      const avg = averageRecent(Math.max(need, rawHistory.length));
+      const avg = averageRecent(Math.max(SAMPLE_FRAMES, rawHistory.length));
       calibrating = false;
 
       if (!avg) {
@@ -271,9 +270,8 @@
         return r;
       }
 
-      const { snapshot, smileN, frownN, surprisedN } = buildSnapshotFromAverage(avg);
+      const { snapshot, smileN, frownN, surprisedN, debug } = buildSnapshotFromAverage(avg);
 
-      // Merge: defaults first so every group key always present, then snapshot
       floors = { ...DEFAULT_FLOORS, ...snapshot };
       isCalibrated = true;
       calibratedAt = new Date().toISOString();
@@ -281,36 +279,31 @@
         [CAL_KEY]: {
           floors: snapshot,
           at: calibratedAt,
-          version: 4,
+          version: 5,
           groups: { smile: smileN, frown: frownN, surprised: surprisedN },
         },
       });
 
-      console.log(
-        '[deadzone] Calibrated Neutral v4 — smile keys:', smileN,
-        'frown keys:', frownN,
-        'surprised keys:', surprisedN,
-        '@', calibratedAt,
-        snapshot
-      );
+      console.log('[deadzone] Calibrated Neutral v5 — Smile/Frown/Surprised');
+      console.log('[deadzone] Frown floors (should match your resting face):', debug.frown);
+      console.log('[deadzone] Smile floors:', debug.smile);
+      console.log('[deadzone] Surprised floors:', debug.surprised);
 
       updateCalibUI();
       const r = {
         ok: true,
         message: 'Calibrated Smile · Frown · Surprised',
         floors: snapshot,
-        groups: { smile: smileN, frown: frownN, surprised: surprisedN },
+        debug,
       };
       if (done) done(r);
       return r;
     };
 
-    // If we already have enough history, finish immediately
-    if (rawHistory.length >= Math.min(6, need)) {
+    if (rawHistory.length >= 8) {
       return finish();
     }
 
-    // Otherwise wait a short window for more frames
     setTimeout(finish, SAMPLE_MS);
     return { ok: true, message: 'Sampling neutral face…', pending: true };
   }
@@ -322,7 +315,7 @@
     const s = loadSettings();
     delete s[CAL_KEY];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-    console.log('[deadzone] Calibration reset to defaults (all groups)');
+    console.log('[deadzone] Calibration reset');
     updateCalibUI();
     return { ok: true, message: 'Calibration cleared' };
   }
@@ -346,16 +339,13 @@
         statusEl.classList.add('calib-ok');
         statusEl.classList.remove('calib-default');
       } else {
-        statusEl.textContent = 'Using default floors (all expressions)';
+        statusEl.textContent = 'Using default floors — click Calibrate';
         statusEl.classList.add('calib-default');
         statusEl.classList.remove('calib-ok');
       }
     }
 
-    if (btnReset) {
-      btnReset.style.display = isCalibrated ? '' : 'none';
-    }
-
+    if (btnReset) btnReset.style.display = isCalibrated ? '' : 'none';
     if (btnCal) {
       btnCal.classList.toggle('calibrated', isCalibrated);
       btnCal.disabled = calibrating;
@@ -364,18 +354,16 @@
 
   function flashButton(btn, ok, msg) {
     if (!btn) return;
-    const prev = btn.dataset.label || btn.textContent;
-    btn.dataset.label = prev.includes('Calibrate') ? prev : (btn.dataset.label || '📷 Calibrate Neutral');
-    const base = btn.dataset.label;
+    const base = btn.dataset.label || '📷 Calibrate Neutral';
+    btn.dataset.label = base.includes('Calibrate') ? base : '📷 Calibrate Neutral';
     btn.textContent = ok ? '✓ ' + (msg || 'Done') : '✗ ' + (msg || 'Failed');
     btn.disabled = true;
     setTimeout(() => {
-      btn.textContent = base;
+      btn.textContent = btn.dataset.label;
       btn.disabled = calibrating;
     }, 2000);
   }
 
-  // ── Patch WebSocket.send ─────────────────────────
   const proto = window.WebSocket && window.WebSocket.prototype;
   if (proto && !proto.__asDeadzonePatched) {
     const origSend = proto.send;
@@ -390,9 +378,7 @@
             data = JSON.stringify(msg);
           }
         }
-      } catch (e) {
-        /* leave data unchanged */
-      }
+      } catch (e) { /* pass */ }
       return origSend.call(this, data);
     };
     proto.__asDeadzonePatched = true;
@@ -412,7 +398,6 @@
           flashButton(btnCal, result.ok, result.ok ? 'All set!' : 'No data');
           if (!result.ok && result.message) console.warn('[deadzone]', result.message);
         });
-        // If multi-frame pending, show sampling state on button
         if (immediate && immediate.pending) {
           btnCal.textContent = 'Sampling…';
           btnCal.disabled = true;
@@ -437,14 +422,10 @@
     window.AS_getDeadzoneFloors = () => ({
       ...floors,
       __calibrated: isCalibrated,
-      __groups: {
-        smile: SMILE_KEYS,
-        frown: FROWN_KEYS,
-        surprised: SURPRISED_KEYS,
-      },
+      __lastRaw: lastRawBlendshapes,
     });
 
-    console.log('[deadzone] Ready — calibrate links Smile + Frown + Surprised');
+    console.log('[deadzone] Ready v5 — frown floor caps raised; re-calibrate required');
   }
 
   if (document.readyState === 'loading') {
