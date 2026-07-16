@@ -1,7 +1,11 @@
 // ═══════════════════════════════════════════════════
 //  AS Adventurer — Expression Gain Sliders
-//  Real-time EXPRESSION_GAIN control for Smile / Frown / Surprised
-//  Loaded after control.js
+//
+//  MediaPipe defaults: gain = 1.0× (raw scores).
+//  Raise gain to amplify Smile / Frown / Surprised for
+//  BOTH starting an expression AND returning to neutral
+//  (server multiplies live scores; exit hysteresis uses
+//  the same gained scores).
 // ═══════════════════════════════════════════════════
 
 (() => {
@@ -26,20 +30,29 @@
   const GAIN_IDS = {
     smile: { slider: 'gain-smile', value: 'val-gain-smile' },
     frown: { slider: 'gain-frown', value: 'val-gain-frown' },
-    surprised: { slider: 'gain-surprised', value: 'val-gain-surprised' }
+    surprised: { slider: 'gain-surprised', value: 'val-gain-surprised' },
   };
 
-  const DEFAULT_GAIN = 3.0;
+  // MediaPipe default = no amplification
+  const DEFAULT_GAIN = 1.0;
+  const MIN_GAIN = 0.5;
+  const MAX_GAIN = 6.0;
 
   function formatGain(v) {
     return Number(v).toFixed(1) + '×';
   }
 
+  function clampGain(v) {
+    const n = Number(v);
+    if (!isFinite(n)) return DEFAULT_GAIN;
+    return Math.min(MAX_GAIN, Math.max(MIN_GAIN, n));
+  }
+
   function getGainsFromUI() {
     return {
-      smileGain: parseFloat(document.getElementById(GAIN_IDS.smile.slider).value) || DEFAULT_GAIN,
-      frownGain: parseFloat(document.getElementById(GAIN_IDS.frown.slider).value) || DEFAULT_GAIN,
-      surprisedGain: parseFloat(document.getElementById(GAIN_IDS.surprised.slider).value) || DEFAULT_GAIN
+      smileGain: clampGain(document.getElementById(GAIN_IDS.smile.slider)?.value),
+      frownGain: clampGain(document.getElementById(GAIN_IDS.frown.slider)?.value),
+      surprisedGain: clampGain(document.getElementById(GAIN_IDS.surprised.slider)?.value),
     };
   }
 
@@ -48,7 +61,6 @@
     clearTimeout(sendTimeout);
     sendTimeout = setTimeout(async () => {
       const gains = getGainsFromUI();
-      // Persist under both gains + nested in thresholds for compatibility
       const settings = loadSettings();
       const thresholds = settings.thresholds || {};
       thresholds.smileGain = gains.smileGain;
@@ -58,21 +70,21 @@
         gains: {
           smile: gains.smileGain,
           frown: gains.frownGain,
-          surprised: gains.surprisedGain
+          surprised: gains.surprisedGain,
         },
-        thresholds
+        thresholds,
       });
 
       try {
         await fetch('/api/thresholds', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(gains)
+          body: JSON.stringify(gains),
         });
       } catch (e) {
-        /* ignore network blips */
+        /* ignore */
       }
-    }, 150); // snappier than threshold debounce — gain feels live
+    }, 120);
   }
 
   function applyGainToUI(key, val) {
@@ -81,20 +93,25 @@
     const slider = document.getElementById(ids.slider);
     const label = document.getElementById(ids.value);
     if (!slider || !label) return;
-    const n = Math.min(6, Math.max(1, Number(val) || DEFAULT_GAIN));
+    const n = clampGain(val);
     slider.value = n;
     label.textContent = formatGain(n);
   }
 
   function restoreGains() {
     const settings = loadSettings();
-    // Prefer dedicated gains object, fall back to thresholds.*Gain
     const g = settings.gains || {};
     const t = settings.thresholds || {};
-    applyGainToUI('smile', g.smile ?? t.smileGain ?? DEFAULT_GAIN);
-    applyGainToUI('frown', g.frown ?? t.frownGain ?? DEFAULT_GAIN);
-    applyGainToUI('surprised', g.surprised ?? t.surprisedGain ?? DEFAULT_GAIN);
-    // Push restored values to server
+
+    // If old 3.0 defaults are still stored from earlier experiments, treat
+    // missing gains as 1.0 (MediaPipe). Explicit saved values still win.
+    const smile = g.smile ?? t.smileGain ?? DEFAULT_GAIN;
+    const frown = g.frown ?? t.frownGain ?? DEFAULT_GAIN;
+    const surprised = g.surprised ?? t.surprisedGain ?? DEFAULT_GAIN;
+
+    applyGainToUI('smile', smile);
+    applyGainToUI('frown', frown);
+    applyGainToUI('surprised', surprised);
     sendGains();
   }
 
@@ -106,8 +123,13 @@
         console.warn('[gain] Missing elements for', key);
         continue;
       }
+      // Ensure HTML range matches allowed band
+      slider.min = String(MIN_GAIN);
+      slider.max = String(MAX_GAIN);
+      slider.step = '0.1';
+
       slider.addEventListener('input', () => {
-        const val = parseFloat(slider.value);
+        const val = clampGain(slider.value);
         label.textContent = formatGain(val);
         sendGains();
       });
@@ -118,30 +140,31 @@
     const btn = document.getElementById('btn-reset-thresholds');
     if (!btn) return;
     btn.addEventListener('click', () => {
-      // After control.js resets thresholds, also reset gains
       setTimeout(() => {
         applyGainToUI('smile', DEFAULT_GAIN);
         applyGainToUI('frown', DEFAULT_GAIN);
         applyGainToUI('surprised', DEFAULT_GAIN);
         saveSettings({
-          gains: { smile: DEFAULT_GAIN, frown: DEFAULT_GAIN, surprised: DEFAULT_GAIN }
+          gains: {
+            smile: DEFAULT_GAIN,
+            frown: DEFAULT_GAIN,
+            surprised: DEFAULT_GAIN,
+          },
         });
         sendGains();
       }, 50);
     });
   }
 
-  // Init once DOM is ready (script is at end of body, so usually ready)
   function init() {
-    // Ensure gain elements exist (from index.html Live Tracking section)
     if (!document.getElementById('gain-smile')) {
-      console.warn('[gain] Gain sliders not found in DOM — is index.html up to date?');
+      console.warn('[gain] Gain sliders not found in DOM');
       return;
     }
     wireSliders();
     wireReset();
     restoreGains();
-    console.log('[gain] Expression gain sliders ready (default 3.0×)');
+    console.log('[gain] Ready — MediaPipe default 1.0× (amplifies enter + exit)');
   }
 
   if (document.readyState === 'loading') {
