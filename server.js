@@ -554,10 +554,11 @@ function broadcastAll(data) {
 
 // ── Expression Detection ────────────────────────────
 // Thresholds (can be adjusted via control panel)
+// 4x more sensitive than original defaults (20/25/25 → 5/6/6)
 let thresholds = {
-  smile: 20,
-  frown: 25,
-  surprised: 25,
+  smile: 5,
+  frown: 6,
+  surprised: 6,
   eyesClosed: 55
 };
 
