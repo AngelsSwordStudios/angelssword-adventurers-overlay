@@ -261,6 +261,24 @@
               <div class="expression-current" id="current-expression-icon">😐</div>
               <div class="expression-label" id="current-expression-label">Neutral</div>
             </div>
+
+            <!-- Neutral calibration -->
+            <div class="calib-row" id="calib-row">
+              <button type="button" class="btn btn-primary btn-calib" id="btn-calibrate-neutral"
+                title="Hold a relaxed neutral face, then click. Snapshots your resting blendshapes as the zero baseline.">
+                📷 Calibrate Neutral
+              </button>
+              <button type="button" class="btn btn-secondary btn-calib-reset" id="btn-reset-calibration" style="display:none;"
+                title="Clear personal calibration and use built-in default floors">
+                Reset
+              </button>
+              <span class="calib-status calib-default" id="calib-status">Using default floors</span>
+            </div>
+            <p class="help-text calib-help">
+              Start webcam → relax your face → click <strong>Calibrate Neutral</strong>.
+              Smile/frown meters should drop near 0. Re-calibrate if lighting changes.
+            </p>
+
             <div class="meters">
               <!-- Smile + Gain -->
               <div class="meter-block">
