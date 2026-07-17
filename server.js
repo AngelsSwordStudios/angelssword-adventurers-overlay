@@ -20,7 +20,8 @@ let PORT = PREFERRED_PORT;
 const VTS_SEND_PORT = 21412;   // Port to SEND requests to VTS iPhone
 const VTS_RECV_PORT = 11125;   // Port to RECEIVE tracking data from VTS
 const IFACIAL_PORT = 49983;
-let DEBUG_UDP = true;          // Log raw UDP packets for debugging
+let DEBUG_UDP = false;         // set true to log raw UDP packets
+const DEBUG_EXPR = false;      // set true to log expression transitions
 const ASSETS_DIR = path.join(APP_DIR, 'public', 'assets');
 
 // Ensure assets directory exists
@@ -579,6 +580,32 @@ function detectExpression(blendShapes) {
     return 0;
   };
 
+  // Prefer client geometry ratios when present (webcam path)
+  if (blendShapes._smileRatio !== undefined || blendShapes._mouthOpenRatio !== undefined || blendShapes._frownRatio !== undefined) {
+    let smile = blendShapes._smileRatio !== undefined ? Math.min(100, Number(blendShapes._smileRatio) || 0) : 0;
+    let frown = blendShapes._frownRatio !== undefined ? Math.min(100, Number(blendShapes._frownRatio) || 0) : 0;
+    let surprised = blendShapes._mouthOpenRatio !== undefined ? Math.min(100, Number(blendShapes._mouthOpenRatio) || 0) : 0;
+    const eyeBlinkL = get('EyeBlinkLeft', 'eyeBlink_L', 'eyeBlinkLeft');
+    const eyeBlinkR = get('EyeBlinkRight', 'eyeBlink_R', 'eyeBlinkRight');
+    let eyesClosed = blendShapes._eyesClosedRatio !== undefined
+      ? Math.min(100, Number(blendShapes._eyesClosedRatio) || 0)
+      : (eyeBlinkL + eyeBlinkR) / 2;
+
+    if (eyesClosed > thresholds.eyesClosed) {
+      return { expression: 'eyes_closed', confidence: eyesClosed, smile, frown, surprised, eyesClosed };
+    }
+    if (surprised > thresholds.surprised && surprised > smile && surprised > frown) {
+      return { expression: 'surprised', confidence: surprised, smile, frown, surprised, eyesClosed };
+    }
+    if (smile > thresholds.smile && smile > frown) {
+      return { expression: 'happy', confidence: smile, smile, frown, surprised, eyesClosed };
+    }
+    if (frown > thresholds.frown && frown > smile) {
+      return { expression: 'sad', confidence: frown, smile, frown, surprised, eyesClosed };
+    }
+    return { expression: 'neutral', confidence: 100, smile, frown, surprised, eyesClosed };
+  }
+
   // ── Raw blend shape values ───────────────────────
   // Eyes
   const eyeBlinkL   = get('EyeBlinkLeft',    'eyeBlink_L',    'eyeBlinkLeft');
@@ -781,7 +808,7 @@ function throttledBroadcast(data) {
       const requiredMs = (data.expression === 'neutral') ? EXIT_HYSTERESIS_MS : HYSTERESIS_MS;
       if (now - pendingExpressionSince >= requiredMs) {
         // Candidate has been stable long enough — commit the switch
-        console.log(`[expr] ${currentExpression} → ${data.expression}`);
+        if (DEBUG_EXPR) console.log(`[expr] ${currentExpression} → ${data.expression}`);
         currentExpression = data.expression;
         pendingExpression = null;
       }
@@ -984,13 +1011,13 @@ app.post('/api/thresholds', (req, res) => {
   if (frown !== undefined) { if (!isNum(frown, 0, 100)) return res.status(400).json({ error: 'invalid frown threshold' }); thresholds.frown = frown; }
   if (surprised !== undefined) { if (!isNum(surprised, 0, 100)) return res.status(400).json({ error: 'invalid surprised threshold' }); thresholds.surprised = surprised; }
   if (eyesClosed !== undefined) { if (!isNum(eyesClosed, 0, 100)) return res.status(400).json({ error: 'invalid eyesClosed threshold' }); thresholds.eyesClosed = eyesClosed; }
-  if (expressionHold !== undefined) { if (!isNum(expressionHold, 0, 30000)) return res.status(400).json({ error: 'invalid expressionHold' }); HYSTERESIS_MS = expressionHold; console.log(`[cfg] Expression hold: ${HYSTERESIS_MS}ms`); }
-  if (exitBias !== undefined) { if (!isNum(exitBias, 0, 1)) return res.status(400).json({ error: 'invalid exitBias' }); EXIT_BIAS = exitBias; console.log(`[cfg] Exit bias: ${(EXIT_BIAS * 100).toFixed(0)}%`); }
+  if (expressionHold !== undefined) { if (!isNum(expressionHold, 0, 30000)) return res.status(400).json({ error: 'invalid expressionHold' }); HYSTERESIS_MS = expressionHold; if (DEBUG_EXPR) console.log(`[cfg] Expression hold: ${HYSTERESIS_MS}ms`); }
+  if (exitBias !== undefined) { if (!isNum(exitBias, 0, 1)) return res.status(400).json({ error: 'invalid exitBias' }); EXIT_BIAS = exitBias; if (DEBUG_EXPR) console.log(`[cfg] Exit bias: ${(EXIT_BIAS * 100).toFixed(0)}%`); }
   // Per-expression gain (1.0 – 6.0)
   if (smileGain !== undefined) { if (!isNum(smileGain, 1, 6)) return res.status(400).json({ error: 'invalid smileGain' }); expressionGains.smile = smileGain; }
   if (frownGain !== undefined) { if (!isNum(frownGain, 1, 6)) return res.status(400).json({ error: 'invalid frownGain' }); expressionGains.frown = frownGain; }
   if (surprisedGain !== undefined) { if (!isNum(surprisedGain, 1, 6)) return res.status(400).json({ error: 'invalid surprisedGain' }); expressionGains.surprised = surprisedGain; }
-  console.log(`[cfg] Thresholds updated:`, thresholds, 'Gains:', expressionGains);
+  if (DEBUG_EXPR) console.log(`[cfg] Thresholds updated:`, thresholds, 'Gains:', expressionGains);
   res.json({ success: true, thresholds, gains: expressionGains });
 });
 
