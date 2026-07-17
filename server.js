@@ -20,7 +20,9 @@ let PORT = PREFERRED_PORT;
 const VTS_SEND_PORT = 21412;   // Port to SEND requests to VTS iPhone
 const VTS_RECV_PORT = 11125;   // Port to RECEIVE tracking data from VTS
 const IFACIAL_PORT = 49983;
-let DEBUG_UDP = true;          // Log raw UDP packets for debugging
+let DEBUG_UDP = false;         // set true to log raw UDP packets
+const DEBUG_EXPR = false;      // set true to log expression transitions
+const DEBUG_WS = false;        // set true to log websocket connect/disconnect
 const ASSETS_DIR = path.join(APP_DIR, 'public', 'assets');
 
 // Ensure assets directory exists
@@ -489,7 +491,7 @@ wss.on('connection', (ws, req) => {
   ws._msgCount = 0;
   ws._msgResetTime = Date.now();
   clients.add(ws);
-  console.log(`[ws] ${clientType} connected (${clients.size} total)`);
+  if (DEBUG_WS) console.log(`[ws] ${clientType} connected (${clients.size} total)`);
 
   ws.on('message', (data) => {
     try {
@@ -520,7 +522,7 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     clients.delete(ws);
-    console.log(`[ws] ${clientType} disconnected (${clients.size} total)`);
+    if (DEBUG_WS) console.log(`[ws] ${clientType} disconnected (${clients.size} total)`);
   });
 
   ws.on('pong', () => { ws.isAlive = true; });
@@ -554,11 +556,20 @@ function broadcastAll(data) {
 
 // ── Expression Detection ────────────────────────────
 // Thresholds (can be adjusted via control panel)
+// 4x more sensitive than original defaults (20/25/25 → 5/6/6)
 let thresholds = {
-  smile: 20,
-  frown: 25,
-  surprised: 25,
+  smile: 5,
+  frown: 6,
+  surprised: 6,
   eyesClosed: 55
+};
+
+// Per-expression gain multipliers (MediaPipe raw composites rarely exceed ~32).
+// Adjustable in real-time from the Live Tracking panel.
+let expressionGains = {
+  smile: 3.0,
+  frown: 3.0,
+  surprised: 3.0
 };
 
 function detectExpression(blendShapes) {
@@ -569,6 +580,32 @@ function detectExpression(blendShapes) {
     }
     return 0;
   };
+
+  // Prefer client geometry ratios when present (webcam path)
+  if (blendShapes._smileRatio !== undefined || blendShapes._mouthOpenRatio !== undefined || blendShapes._frownRatio !== undefined) {
+    let smile = blendShapes._smileRatio !== undefined ? Math.min(100, Number(blendShapes._smileRatio) || 0) : 0;
+    let frown = blendShapes._frownRatio !== undefined ? Math.min(100, Number(blendShapes._frownRatio) || 0) : 0;
+    let surprised = blendShapes._mouthOpenRatio !== undefined ? Math.min(100, Number(blendShapes._mouthOpenRatio) || 0) : 0;
+    const eyeBlinkL = get('EyeBlinkLeft', 'eyeBlink_L', 'eyeBlinkLeft');
+    const eyeBlinkR = get('EyeBlinkRight', 'eyeBlink_R', 'eyeBlinkRight');
+    let eyesClosed = blendShapes._eyesClosedRatio !== undefined
+      ? Math.min(100, Number(blendShapes._eyesClosedRatio) || 0)
+      : (eyeBlinkL + eyeBlinkR) / 2;
+
+    if (eyesClosed > thresholds.eyesClosed) {
+      return { expression: 'eyes_closed', confidence: eyesClosed, smile, frown, surprised, eyesClosed };
+    }
+    if (surprised > thresholds.surprised && surprised > smile && surprised > frown) {
+      return { expression: 'surprised', confidence: surprised, smile, frown, surprised, eyesClosed };
+    }
+    if (smile > thresholds.smile && smile > frown) {
+      return { expression: 'happy', confidence: smile, smile, frown, surprised, eyesClosed };
+    }
+    if (frown > thresholds.frown && frown > smile) {
+      return { expression: 'sad', confidence: frown, smile, frown, surprised, eyesClosed };
+    }
+    return { expression: 'neutral', confidence: 100, smile, frown, surprised, eyesClosed };
+  }
 
   // ── Raw blend shape values ───────────────────────
   // Eyes
@@ -605,18 +642,23 @@ function detectExpression(blendShapes) {
   const cheekSquint = (cheekSquintL + cheekSquintR) / 2;
   const eyeSquint   = (eyeSquintL + eyeSquintR) / 2;
   const mouthSmile  = (mouthSmileL + mouthSmileR) / 2;
-  const smile = (cheekSquint * 0.45) + (eyeSquint * 0.35) + (mouthSmile * 0.20);
+  let smile = (cheekSquint * 0.45) + (eyeSquint * 0.35) + (mouthSmile * 0.20);
 
   // Sad: brow furrow + inner brow raise + mouth frown
   const browDown    = (browDownL + browDownR) / 2;
   const mouthFrown  = (mouthFrownL + mouthFrownR) / 2;
-  const frown = (browDown * 0.40) + (browInnerUp * 0.30) + (mouthFrown * 0.30);
+  let frown = (browDown * 0.40) + (browInnerUp * 0.30) + (mouthFrown * 0.30);
 
   // Surprised: eyes wide open + jaw open (O-mouth) + raised brows
   // These are the OPPOSITE of happy (wide eyes vs squint, open mouth vs smile)
   const eyeWide   = (eyeWideL + eyeWideR) / 2;
   const browUp    = ((browOuterL + browOuterR) / 2 + browInnerUp) / 2;
-  const surprised = (eyeWide * 0.35) + (jawOpen * 0.35) + (browUp * 0.15) + (mouthFunnel * 0.15);
+  let surprised = (eyeWide * 0.35) + (jawOpen * 0.35) + (browUp * 0.15) + (mouthFunnel * 0.15);
+
+  // Apply per-expression gain so MediaPipe webcam scores can fill the 0-100 meter
+  smile     = Math.min(100, smile     * expressionGains.smile);
+  frown     = Math.min(100, frown     * expressionGains.frown);
+  surprised = Math.min(100, surprised * expressionGains.surprised);
 
   // ── Expression priority: eyes_closed > surprised > happy > sad > neutral
   if (eyesClosed > thresholds.eyesClosed) {
@@ -767,7 +809,7 @@ function throttledBroadcast(data) {
       const requiredMs = (data.expression === 'neutral') ? EXIT_HYSTERESIS_MS : HYSTERESIS_MS;
       if (now - pendingExpressionSince >= requiredMs) {
         // Candidate has been stable long enough — commit the switch
-        console.log(`[expr] ${currentExpression} → ${data.expression}`);
+        if (DEBUG_EXPR) console.log(`[expr] ${currentExpression} → ${data.expression}`);
         currentExpression = data.expression;
         pendingExpression = null;
       }
@@ -960,19 +1002,24 @@ app.post('/api/connect-ifacial', (req, res) => {
   });
 });
 
-// ── API: Update thresholds ──────────────────────────
+// ── API: Update thresholds + expression gains ───────
 app.post('/api/thresholds', (req, res) => {
-  const { smile, frown, surprised, eyesClosed, expressionHold, exitBias } = req.body;
+  const { smile, frown, surprised, eyesClosed, expressionHold, exitBias,
+          smileGain, frownGain, surprisedGain } = req.body;
   // Validate all values as finite numbers within reasonable ranges
   const isNum = (v, min, max) => typeof v === 'number' && isFinite(v) && v >= min && v <= max;
   if (smile !== undefined) { if (!isNum(smile, 0, 100)) return res.status(400).json({ error: 'invalid smile threshold' }); thresholds.smile = smile; }
   if (frown !== undefined) { if (!isNum(frown, 0, 100)) return res.status(400).json({ error: 'invalid frown threshold' }); thresholds.frown = frown; }
   if (surprised !== undefined) { if (!isNum(surprised, 0, 100)) return res.status(400).json({ error: 'invalid surprised threshold' }); thresholds.surprised = surprised; }
   if (eyesClosed !== undefined) { if (!isNum(eyesClosed, 0, 100)) return res.status(400).json({ error: 'invalid eyesClosed threshold' }); thresholds.eyesClosed = eyesClosed; }
-  if (expressionHold !== undefined) { if (!isNum(expressionHold, 0, 30000)) return res.status(400).json({ error: 'invalid expressionHold' }); HYSTERESIS_MS = expressionHold; console.log(`[cfg] Expression hold: ${HYSTERESIS_MS}ms`); }
-  if (exitBias !== undefined) { if (!isNum(exitBias, 0, 1)) return res.status(400).json({ error: 'invalid exitBias' }); EXIT_BIAS = exitBias; console.log(`[cfg] Exit bias: ${(EXIT_BIAS * 100).toFixed(0)}%`); }
-  console.log(`[cfg] Thresholds updated:`, thresholds);
-  res.json({ success: true, thresholds });
+  if (expressionHold !== undefined) { if (!isNum(expressionHold, 0, 30000)) return res.status(400).json({ error: 'invalid expressionHold' }); HYSTERESIS_MS = expressionHold; if (DEBUG_EXPR) console.log(`[cfg] Expression hold: ${HYSTERESIS_MS}ms`); }
+  if (exitBias !== undefined) { if (!isNum(exitBias, 0, 1)) return res.status(400).json({ error: 'invalid exitBias' }); EXIT_BIAS = exitBias; if (DEBUG_EXPR) console.log(`[cfg] Exit bias: ${(EXIT_BIAS * 100).toFixed(0)}%`); }
+  // Per-expression gain (1.0 – 6.0)
+  if (smileGain !== undefined) { if (!isNum(smileGain, 1, 6)) return res.status(400).json({ error: 'invalid smileGain' }); expressionGains.smile = smileGain; }
+  if (frownGain !== undefined) { if (!isNum(frownGain, 1, 6)) return res.status(400).json({ error: 'invalid frownGain' }); expressionGains.frown = frownGain; }
+  if (surprisedGain !== undefined) { if (!isNum(surprisedGain, 1, 6)) return res.status(400).json({ error: 'invalid surprisedGain' }); expressionGains.surprised = surprisedGain; }
+  if (DEBUG_EXPR) console.log(`[cfg] Thresholds updated:`, thresholds, 'Gains:', expressionGains);
+  res.json({ success: true, thresholds, gains: expressionGains });
 });
 
 // ── Start (auto-find available port) ────────────────

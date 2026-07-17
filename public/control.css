@@ -404,6 +404,41 @@ input[type="range"]::-webkit-slider-thumb:hover {
   transform: scale(1.15);
 }
 
+/* Compact gain sliders under Live Tracking meters */
+.meter-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.slider-group.meter-gain {
+  margin-bottom: 10px;
+  margin-left: 80px; /* align under the bar (label is ~70px + gap) */
+  padding-right: 40px; /* leave room for the numeric value */
+}
+
+.slider-group.meter-gain label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.slider-group.meter-gain .slider-value {
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.slider-group.meter-gain input[type="range"] {
+  height: 5px;
+}
+
+.slider-group.meter-gain input[type="range"]::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+}
+
 .model-select {
   width: 100%;
   padding: 10px 14px;
@@ -460,6 +495,48 @@ input[type="range"]::-webkit-slider-thumb:hover {
   font-size: 11px;
   color: var(--text-muted);
   font-weight: 500;
+}
+
+/* ── Neutral Calibration ───────────────────────── */
+.calib-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.btn-calib {
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.btn-calib.calibrated {
+  box-shadow: 0 0 0 1px rgba(123, 159, 110, 0.45);
+}
+
+.btn-calib-reset {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.calib-status {
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.calib-status.calib-ok {
+  color: var(--success);
+}
+
+.calib-status.calib-default {
+  color: var(--text-muted);
+}
+
+.calib-help {
+  font-size: 12px;
+  margin-bottom: 14px;
 }
 
 /* ── Meters ─────────────────────────────────────── */
@@ -631,7 +708,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   user-select: all;
 }
 
-/* ── Webcam ────────────────────────────────────── */
+/* ── Webcam + Privacy Preview ──────────────────── */
 .webcam-container {
   margin-top: 12px;
   position: relative;
@@ -640,14 +717,119 @@ input[type="range"]::-webkit-slider-thumb:hover {
   background: #000;
 }
 
-.webcam-container video {
+.webcam-preview-wrap {
+  position: relative;
+  width: 100%;
+  background: #0a0a12;
+  min-height: 120px;
+}
+
+.webcam-preview-wrap video {
   width: 100%;
   display: block;
   transform: scaleX(-1);
+  /* Video stays mounted for MediaPipe even when "hidden" via overlay */
+}
+
+/* When privacy is on, still keep video in layout for stable aspect ratio,
+   but cover it completely so the face is never visible. */
+.webcam-preview-wrap.privacy-on video {
+  /* Keep decoding frames; only hide visually */
+  visibility: hidden;
+}
+
+.webcam-privacy-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #12182a 0%, #0f1424 50%, #1a2038 100%);
+  border: 1px solid var(--border);
+  z-index: 2;
+}
+
+.webcam-preview-wrap.privacy-on .webcam-privacy-overlay {
+  display: flex;
+}
+
+.webcam-privacy-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text-secondary);
+}
+
+.webcam-privacy-icon {
+  font-size: 28px;
+  line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(219, 184, 88, 0.35));
+}
+
+.webcam-privacy-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.webcam-privacy-sub {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .webcam-container canvas {
   display: none;
+}
+
+.webcam-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: #64748b;
+}
+
+.webcam-meta-stats {
+  flex: 1;
+  min-width: 0;
+}
+
+.webcam-preview-toggle {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.webcam-preview-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.webcam-preview-toggle.preview-on {
+  border-color: rgba(123, 159, 110, 0.5);
+  color: var(--success);
+}
+
+.webcam-preview-toggle.preview-off {
+  border-color: rgba(199, 80, 80, 0.45);
+  color: #e8a0a0;
 }
 
 /* ── Emote Grid ───────────────────────────────── */

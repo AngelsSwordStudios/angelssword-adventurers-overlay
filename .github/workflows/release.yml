@@ -1,0 +1,93 @@
+name: Build Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0) — used only for workflow_dispatch'
+        required: true
+        default: '0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows release
+        run: node build-release.js
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+
+      - name: Rename zip with version
+        run: |
+          mkdir -p dist-upload
+          if [ -f release/ASAdventurer.zip ]; then
+            cp release/ASAdventurer.zip "dist-upload/ASAdventurer-v${{ steps.ver.outputs.version }}-win-x64.zip"
+          else
+            echo "release/ASAdventurer.zip missing" && ls -laR release || true
+            exit 1
+          fi
+          if [ -f release/ASAdventurer/CHECKSUM.txt ]; then
+            cp release/ASAdventurer/CHECKSUM.txt "dist-upload/CHECKSUM-v${{ steps.ver.outputs.version }}.txt"
+          fi
+          ls -la dist-upload/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: AS Adventurer v${{ steps.ver.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## AS Adventurer v${{ steps.ver.outputs.version }}
+
+            MediaPipe face tracking overlay for OBS (Windows 64-bit).
+
+            ### Download
+            - **ASAdventurer-v${{ steps.ver.outputs.version }}-win-x64.zip** — extract, then run `Start AS Adventurer.bat` or `ASAdventurer.exe`
+
+            ### Quick start
+            1. Extract the zip
+            2. Double-click **Start AS Adventurer.bat**
+            3. Open http://localhost:3000 (Control Panel)
+            4. In OBS, add Browser Source → `http://localhost:3000/overlay.html`
+
+            ### What's included
+            - Standalone `ASAdventurer.exe` (no Node install required)
+            - Control panel with Gain sliders (smile / frown / surprised / eyes)
+            - Landmark geometry tracking
+            - Webcam privacy toggle
+
+            Verify integrity with `CHECKSUM.txt` if included.
+          files: |
+            dist-upload/ASAdventurer-v${{ steps.ver.outputs.version }}-win-x64.zip
+            dist-upload/CHECKSUM-v${{ steps.ver.outputs.version }}.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
