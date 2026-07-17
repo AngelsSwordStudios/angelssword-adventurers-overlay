@@ -45,96 +45,138 @@
     }
   }
 
-  /**
-   * Landmark fallback: lower-lip press + chin raise (0 at rest).
-   * - Press: lips squeeze (mouth opening shrinks below a soft band)
-   * - Chin raise: chin moves up toward lower lip
-   */
-  function getFrownRatioFromLandmarks(landmarks) {
+  /** Head pitch-down 0–1 from landmarks (0 ≈ level / looking ahead). */
+  function getHeadPitchDown01(landmarks) {
     try {
-      var faceH = Math.abs(landmarks[10].y - landmarks[152].y);
-      if (!(faceH > 1e-6)) return 0;
-
-      var upperLipY = landmarks[13].y;
-      var lowerLipY = landmarks[14].y;
-      // lower lip centre (better for press than 14 alone)
-      var lowerCentreY = landmarks[17] ? landmarks[17].y : lowerLipY;
+      var leftEye = landmarks[33];
+      var rightEye = landmarks[263];
+      var eyeMidY = (leftEye.y + rightEye.y) / 2;
+      var noseY = landmarks[1].y;
       var chinY = landmarks[152].y;
+      var span = chinY - eyeMidY;
+      if (!(span > 1e-6)) return 0;
+      // Nose position along eye→chin axis (higher when looking down)
+      var t = (noseY - eyeMidY) / span;
+      // Neutral looking ahead is often ~0.42–0.50
+      var down = Math.max(0, t - 0.50);
+      return Math.min(1, down * 7);
+    } catch (e) {
+      return 0;
+    }
+  }
 
-      // --- Lower lip press: opening smaller than relaxed closed ---
-      var openAmt = Math.max(0, (lowerCentreY - upperLipY) / faceH);
-      // Typical relaxed closed ~0.015–0.035 of faceH; press goes lower
-      var press = Math.max(0, 0.022 - openAmt);
-      var pressScore = Math.min(1, press * 55);
-
-      // --- Chin raise: chin–lower-lip gap shrinks ---
-      var chinGap = Math.max(0, (chinY - lowerCentreY) / faceH);
-      // Neutral gap often ~0.08–0.14; raised chin reduces it
-      var chinRaise = Math.max(0, 0.11 - chinGap);
-      var chinScore = Math.min(1, chinRaise * 14);
-
-      // Gate: if mouth is clearly open (talking), suppress press/chin false positives
-      if (openAmt > 0.05) {
-        pressScore *= 0.15;
-        chinScore *= 0.35;
-      }
-
-      return Math.min(1.0, pressScore * 0.55 + chinScore * 0.45);
+  /** Head roll (lateral tilt) 0–1 from eye-line angle. */
+  function getHeadRoll01(landmarks) {
+    try {
+      var leftEye = landmarks[33];
+      var rightEye = landmarks[263];
+      var rollRad = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
+      var absRoll = Math.abs(rollRad);
+      // Deadzone ~2.5° so small camera/noise tilt is ignored
+      var excess = Math.max(0, absRoll - 0.045);
+      // ~15° (0.26 rad) → full contribution
+      return Math.min(1, excess / 0.26);
     } catch (e) {
       return 0;
     }
   }
 
   /**
-   * Preferred: MediaPipe blendshapes for lip press + chin/lower shrug.
-   * Values in blendShapeMap are already 0–100; near 0 at rest.
+   * Landmark-only frown fallback when blendshapes are missing:
+   * inner-brow raise + mouth-corner down + head pitch/roll.
    */
-  function getFrownRatioFromBlendshapes(map) {
+  function getFrownRatioFromLandmarks(landmarks) {
+    try {
+      var faceH = Math.abs(landmarks[10].y - landmarks[152].y);
+      if (!(faceH > 1e-6)) return 0;
+
+      // Inner brow raise (107 / 336) relative to eye tops
+      var innerBrowY = (landmarks[107].y + landmarks[336].y) / 2;
+      var eyeTopY = (landmarks[159].y + landmarks[386].y) / 2;
+      var outerBrowY = (landmarks[70].y + landmarks[300].y) / 2;
+      var absRaise = Math.max(0, eyeTopY - innerBrowY);
+      var relRaise = Math.max(0, outerBrowY - innerBrowY);
+      var brow = Math.min(1, absRaise * 9 * 0.55 + relRaise * 18 * 0.45);
+
+      // Mouth corners down
+      var mouthCenterY = (landmarks[13].y + landmarks[14].y) / 2;
+      var cornerY = (landmarks[61].y + landmarks[291].y) / 2;
+      var cornerDown = Math.max(0, (cornerY - mouthCenterY) / faceH);
+      var mouth = Math.min(1, cornerDown * 28);
+
+      var pitch = getHeadPitchDown01(landmarks);
+      var roll = getHeadRoll01(landmarks);
+
+      return Math.min(
+        1.0,
+        brow * 0.32 + mouth * 0.32 + pitch * 0.20 + roll * 0.16
+      );
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /**
+   * Primary frown:
+   *   browInnerUp + mouthFrownL/R + mouthShrugLower
+   *   + head pitch (down) + head roll (tilt)
+   * Blendshape channels are 0–100; head pose is 0–1 from landmarks.
+   */
+  function getFrownRatioFromBlendshapes(map, landmarks) {
     if (!map) return null;
 
-    function avg(a, b) {
-      var x = Number(map[a]);
-      var y = Number(map[b]);
-      var n = 0;
-      var s = 0;
-      if (isFinite(x)) {
-        s += x;
-        n++;
-      }
-      if (isFinite(y)) {
-        s += y;
-        n++;
-      }
-      return n ? s / n : null;
+    function num(key) {
+      var v = Number(map[key]);
+      return isFinite(v) ? v : null;
     }
 
-    var press = avg('mouthPressLeft', 'mouthPressRight');
-    var shrug = Number(map.mouthShrugLower);
-    if (!isFinite(shrug)) shrug = null;
+    function avg(a, b) {
+      var x = num(a);
+      var y = num(b);
+      if (x == null && y == null) return null;
+      if (x == null) return y;
+      if (y == null) return x;
+      return (x + y) / 2;
+    }
 
-    // Optional extra chin-ish cue if present
-    var jawFwd = Number(map.jawForward);
-    if (!isFinite(jawFwd)) jawFwd = 0;
+    var browInner = num('browInnerUp');
+    var mouthFrown = avg('mouthFrownLeft', 'mouthFrownRight');
+    var shrug = num('mouthShrugLower');
 
-    if (press == null && shrug == null) return null;
-    if (press == null) press = 0;
+    // Need at least one facial channel present
+    if (browInner == null && mouthFrown == null && shrug == null) return null;
+
+    if (browInner == null) browInner = 0;
+    if (mouthFrown == null) mouthFrown = 0;
     if (shrug == null) shrug = 0;
 
-    var FLOOR = 3;
-    press = Math.max(0, press - FLOOR);
+    // Soft floor kills neutral blendshape noise
+    var FLOOR = 4;
+    browInner = Math.max(0, browInner - FLOOR);
+    mouthFrown = Math.max(0, mouthFrown - FLOOR);
     shrug = Math.max(0, shrug - FLOOR);
-    jawFwd = Math.max(0, jawFwd - FLOOR);
 
-    // Weight press + lower shrug; tiny jawForward assist
-    var score =
-      (press * 0.55 + shrug * 0.40 + jawFwd * 0.05) / (100 - FLOOR);
+    var denom = 100 - FLOOR;
+    var face =
+      (browInner * 0.34 + mouthFrown * 0.34 + shrug * 0.22) / denom;
+
+    var pitch = landmarks ? getHeadPitchDown01(landmarks) : 0;
+    var roll = landmarks ? getHeadRoll01(landmarks) : 0;
+
+    // Face-dominant; head tilt supports sad/concerned posture
+    var score = face * 0.78 + pitch * 0.12 + roll * 0.10;
     if (score < 0) score = 0;
     if (score > 1) score = 1;
+
+    // Debug helpers (optional meters / console)
+    map._headPitchDown = Math.round(pitch * 100);
+    map._headRoll = Math.round(roll * 100);
+
     return score;
   }
 
   function getFrownRatio(landmarks, blendShapeMap) {
-    var fromBs = getFrownRatioFromBlendshapes(blendShapeMap);
+    var fromBs = getFrownRatioFromBlendshapes(blendShapeMap, landmarks);
     if (fromBs != null) return fromBs;
     return getFrownRatioFromLandmarks(landmarks);
   }
@@ -245,6 +287,8 @@
     getFrownRatio: getFrownRatio,
     getEyesClosedRatio: getEyesClosedRatio,
     getEyebrowRaiseRatio: getEyebrowRaiseRatio,
+    getHeadPitchDown01: getHeadPitchDown01,
+    getHeadRoll01: getHeadRoll01,
     injectGeometryScores: injectGeometryScores,
     applySensitivity: applySensitivity,
   };
@@ -252,5 +296,7 @@
   window.AS_Geometry = api;
   window.AS_BrokeAss = api;
 
-  console.log('[geometry] Ready — frown = lower lip press / chin raise');
+  console.log(
+    '[geometry] Ready — frown = browInnerUp + mouthFrown + shrug + pitch/roll'
+  );
 })();
