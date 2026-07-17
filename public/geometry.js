@@ -46,69 +46,80 @@
   }
 
   /**
-   * Frown 0–1 via nasolabial-fold deepen.
-   * Measures how the crease region (nose wing → fold → mouth corner)
-   * pulls in / deepens vs a relaxed face.
+   * Landmark-only nasolabial / displeasure proxy (0 at rest).
+   * Uses upper-lip side raise + slight mouth-corner down — both
+   * near zero on a neutral face (no absolute fold distance).
    */
-  function getFrownRatio(landmarks) {
+  function getFrownRatioFromLandmarks(landmarks) {
     try {
       var faceH = Math.abs(landmarks[10].y - landmarks[152].y);
       if (!(faceH > 1e-6)) return 0;
 
-      /**
-       * Per-side nasolabial score.
-       * noseIdx  — nose wing (48 left / 278 right)
-       * foldIdx  — crease mid region (205 left / 425 right)
-       * cornerIdx — mouth corner (61 left / 291 right)
-       * cheekIdx — outer cheek for width ref (234 left / 454 right)
-       */
-      function sideScore(noseIdx, foldIdx, cornerIdx, cheekIdx) {
-        var nose = landmarks[noseIdx];
-        var fold = landmarks[foldIdx];
-        var corner = landmarks[cornerIdx];
-        var cheek = landmarks[cheekIdx];
+      // Upper-lip sides (near canine / nasolabial) vs subnasale
+      // Raised lip → smaller gap → score rises from 0
+      var subY = landmarks[2].y;
+      var upperSideY = (landmarks[39].y + landmarks[269].y) / 2;
+      var mouthCenterY = (landmarks[13].y + landmarks[14].y) / 2;
+      var span = mouthCenterY - subY;
+      if (!(span > 1e-6)) return 0;
+      // t = 0 at nose, 1 at mouth centre; neutral ~0.4–0.55
+      var t = (upperSideY - subY) / span;
+      var raise = Math.max(0, 0.48 - t); // only count when above neutral band
+      var upperScore = Math.min(1, raise * 10);
 
-        // 1) Medial pull: fold moves toward nose vs outer cheek span
-        var halfW = Math.abs(cheek.x - nose.x);
-        if (!(halfW > 1e-6)) halfW = 1e-6;
-        var foldFromNose = Math.abs(fold.x - nose.x);
-        // Higher when fold sits closer to the nose (crease pulled in)
-        var medial = Math.max(0, Math.min(1, 1 - foldFromNose / halfW));
+      // Slight mouth-corner down (inverse smile), also ~0 at rest
+      var cornerY = (landmarks[61].y + landmarks[291].y) / 2;
+      var cornerDown = Math.max(0, (cornerY - mouthCenterY) / faceH);
+      var mouthScore = Math.min(1, cornerDown * 28);
 
-        // 2) How tightly fold sits on the nose→mouth-corner chord
-        //    (deeper fold → landmark sits closer to that path)
-        var dx = corner.x - nose.x;
-        var dy = corner.y - nose.y;
-        var len2 = dx * dx + dy * dy;
-        if (len2 < 1e-12) return 0;
-        var t = ((fold.x - nose.x) * dx + (fold.y - nose.y) * dy) / len2;
-        if (t < 0) t = 0;
-        else if (t > 1) t = 1;
-        var projX = nose.x + t * dx;
-        var projY = nose.y + t * dy;
-        var dist = Math.hypot(fold.x - projX, fold.y - projY);
-        // Typical relaxed dist is a few % of face height; clamp to 0–1
-        var onLine = Math.max(0, Math.min(1, 1 - (dist / faceH) * 10));
-
-        // 3) Vertical tension: upper-lip / fold area lifts toward nose
-        //    (common with nasolabial activation / displeasure)
-        var midY = (nose.y + corner.y) / 2;
-        var verticalPull = Math.max(0, (midY - fold.y) / faceH);
-        var vert = Math.min(1, verticalPull * 14);
-
-        return medial * 0.40 + onLine * 0.35 + vert * 0.25;
-      }
-
-      // Left / right nasolabial regions
-      var left = sideScore(48, 205, 61, 234);
-      var right = sideScore(278, 425, 291, 454);
-      var avg = (left + right) / 2;
-
-      // Mild boost so a clear deepen reaches the top of the meter
-      return Math.min(1.0, avg * 1.25);
+      return Math.min(1.0, upperScore * 0.70 + mouthScore * 0.30);
     } catch (e) {
       return 0;
     }
+  }
+
+  /**
+   * Preferred: MediaPipe blendshapes that track nasolabial / sneer.
+   * noseSneer + mouthUpperUp are near 0 at rest and rise with deepen.
+   * Values in blendShapeMap are already 0–100.
+   */
+  function getFrownRatioFromBlendshapes(map) {
+    if (!map) return null;
+    function avg(a, b) {
+      var x = Number(map[a]);
+      var y = Number(map[b]);
+      var n = 0;
+      var s = 0;
+      if (isFinite(x)) {
+        s += x;
+        n++;
+      }
+      if (isFinite(y)) {
+        s += y;
+        n++;
+      }
+      return n ? s / n : null;
+    }
+    var sneer = avg('noseSneerLeft', 'noseSneerRight');
+    var upper = avg('mouthUpperUpLeft', 'mouthUpperUpRight');
+    if (sneer == null && upper == null) return null;
+    if (sneer == null) sneer = 0;
+    if (upper == null) upper = 0;
+    // Soft floor so tiny neutral noise stays off the meter
+    var FLOOR = 4;
+    sneer = Math.max(0, sneer - FLOOR);
+    upper = Math.max(0, upper - FLOOR);
+    // 0–100 → 0–1, weighted toward noseSneer (true nasolabial)
+    var score = (sneer * 0.65 + upper * 0.35) / (100 - FLOOR);
+    if (score < 0) score = 0;
+    if (score > 1) score = 1;
+    return score;
+  }
+
+  function getFrownRatio(landmarks, blendShapeMap) {
+    var fromBs = getFrownRatioFromBlendshapes(blendShapeMap);
+    if (fromBs != null) return fromBs;
+    return getFrownRatioFromLandmarks(landmarks);
   }
 
   function getEyesClosedRatio(landmarks) {
@@ -164,7 +175,8 @@
 
     var rawMouth = getMouthOpenRatio(landmarks);
     var rawSmile = getSmileRatio(landmarks);
-    var rawFrown = getFrownRatio(landmarks);
+    // Prefer noseSneer + mouthUpperUp (nasolabial) when blendshapes exist
+    var rawFrown = getFrownRatio(landmarks, blendShapeMap);
     var rawEyes = getEyesClosedRatio(landmarks);
 
     var smileScore = applySensitivity(rawSmile, gains.smile);
@@ -198,8 +210,6 @@
     blendShapeMap.browOuterUpLeft = m;
     blendShapeMap.browOuterUpRight = m;
 
-    // Frown channels stuffed so server composite = frownScore
-    // (gain already applied — same path as other emotions)
     var f = frownScore;
     blendShapeMap.browDownLeft = f;
     blendShapeMap.browDownRight = f;
@@ -226,5 +236,5 @@
   window.AS_Geometry = api;
   window.AS_BrokeAss = api;
 
-  console.log('[geometry] Ready — frown = nasolabial deepen');
+  console.log('[geometry] Ready — frown = nasolabial (noseSneer + mouthUpperUp, zero-based)');
 })();
