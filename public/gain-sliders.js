@@ -119,15 +119,7 @@
       slider.max = String(MAX_GAIN);
       slider.step = '0.05';
       slider.addEventListener('input', () => {
-        const gains = readSliders();
-        commitGains(gains);
-        console.log(
-          '[gain]',
-          gains.smile.toFixed(2) + 'x smile /',
-          gains.frown.toFixed(2) + 'x frown /',
-          gains.surprised.toFixed(2) + 'x surprised /',
-          gains.eyes.toFixed(2) + 'x eyes'
-        );
+        commitGains(readSliders());
       });
     }
   }
@@ -157,7 +149,6 @@
     wireReset();
     restoreGains();
     window.AS_getGains = () => ({ ...window.AS_GAINS });
-    console.log('[gain] smile/frown/surprised/eyes 0.5–5.0× ready', window.AS_GAINS);
   }
 
   if (document.readyState === 'loading') {
