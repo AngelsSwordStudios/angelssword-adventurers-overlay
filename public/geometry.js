@@ -46,45 +46,52 @@
   }
 
   /**
-   * Landmark-only nasolabial / displeasure proxy (0 at rest).
-   * Uses upper-lip side raise + slight mouth-corner down — both
-   * near zero on a neutral face (no absolute fold distance).
+   * Landmark fallback: lower-lip press + chin raise (0 at rest).
+   * - Press: lips squeeze (mouth opening shrinks below a soft band)
+   * - Chin raise: chin moves up toward lower lip
    */
   function getFrownRatioFromLandmarks(landmarks) {
     try {
       var faceH = Math.abs(landmarks[10].y - landmarks[152].y);
       if (!(faceH > 1e-6)) return 0;
 
-      // Upper-lip sides (near canine / nasolabial) vs subnasale
-      // Raised lip → smaller gap → score rises from 0
-      var subY = landmarks[2].y;
-      var upperSideY = (landmarks[39].y + landmarks[269].y) / 2;
-      var mouthCenterY = (landmarks[13].y + landmarks[14].y) / 2;
-      var span = mouthCenterY - subY;
-      if (!(span > 1e-6)) return 0;
-      // t = 0 at nose, 1 at mouth centre; neutral ~0.4–0.55
-      var t = (upperSideY - subY) / span;
-      var raise = Math.max(0, 0.48 - t); // only count when above neutral band
-      var upperScore = Math.min(1, raise * 10);
+      var upperLipY = landmarks[13].y;
+      var lowerLipY = landmarks[14].y;
+      // lower lip centre (better for press than 14 alone)
+      var lowerCentreY = landmarks[17] ? landmarks[17].y : lowerLipY;
+      var chinY = landmarks[152].y;
 
-      // Slight mouth-corner down (inverse smile), also ~0 at rest
-      var cornerY = (landmarks[61].y + landmarks[291].y) / 2;
-      var cornerDown = Math.max(0, (cornerY - mouthCenterY) / faceH);
-      var mouthScore = Math.min(1, cornerDown * 28);
+      // --- Lower lip press: opening smaller than relaxed closed ---
+      var openAmt = Math.max(0, (lowerCentreY - upperLipY) / faceH);
+      // Typical relaxed closed ~0.015–0.035 of faceH; press goes lower
+      var press = Math.max(0, 0.022 - openAmt);
+      var pressScore = Math.min(1, press * 55);
 
-      return Math.min(1.0, upperScore * 0.70 + mouthScore * 0.30);
+      // --- Chin raise: chin–lower-lip gap shrinks ---
+      var chinGap = Math.max(0, (chinY - lowerCentreY) / faceH);
+      // Neutral gap often ~0.08–0.14; raised chin reduces it
+      var chinRaise = Math.max(0, 0.11 - chinGap);
+      var chinScore = Math.min(1, chinRaise * 14);
+
+      // Gate: if mouth is clearly open (talking), suppress press/chin false positives
+      if (openAmt > 0.05) {
+        pressScore *= 0.15;
+        chinScore *= 0.35;
+      }
+
+      return Math.min(1.0, pressScore * 0.55 + chinScore * 0.45);
     } catch (e) {
       return 0;
     }
   }
 
   /**
-   * Preferred: MediaPipe blendshapes that track nasolabial / sneer.
-   * noseSneer + mouthUpperUp are near 0 at rest and rise with deepen.
-   * Values in blendShapeMap are already 0–100.
+   * Preferred: MediaPipe blendshapes for lip press + chin/lower shrug.
+   * Values in blendShapeMap are already 0–100; near 0 at rest.
    */
   function getFrownRatioFromBlendshapes(map) {
     if (!map) return null;
+
     function avg(a, b) {
       var x = Number(map[a]);
       var y = Number(map[b]);
@@ -100,17 +107,27 @@
       }
       return n ? s / n : null;
     }
-    var sneer = avg('noseSneerLeft', 'noseSneerRight');
-    var upper = avg('mouthUpperUpLeft', 'mouthUpperUpRight');
-    if (sneer == null && upper == null) return null;
-    if (sneer == null) sneer = 0;
-    if (upper == null) upper = 0;
-    // Soft floor so tiny neutral noise stays off the meter
-    var FLOOR = 4;
-    sneer = Math.max(0, sneer - FLOOR);
-    upper = Math.max(0, upper - FLOOR);
-    // 0–100 → 0–1, weighted toward noseSneer (true nasolabial)
-    var score = (sneer * 0.65 + upper * 0.35) / (100 - FLOOR);
+
+    var press = avg('mouthPressLeft', 'mouthPressRight');
+    var shrug = Number(map.mouthShrugLower);
+    if (!isFinite(shrug)) shrug = null;
+
+    // Optional extra chin-ish cue if present
+    var jawFwd = Number(map.jawForward);
+    if (!isFinite(jawFwd)) jawFwd = 0;
+
+    if (press == null && shrug == null) return null;
+    if (press == null) press = 0;
+    if (shrug == null) shrug = 0;
+
+    var FLOOR = 3;
+    press = Math.max(0, press - FLOOR);
+    shrug = Math.max(0, shrug - FLOOR);
+    jawFwd = Math.max(0, jawFwd - FLOOR);
+
+    // Weight press + lower shrug; tiny jawForward assist
+    var score =
+      (press * 0.55 + shrug * 0.40 + jawFwd * 0.05) / (100 - FLOOR);
     if (score < 0) score = 0;
     if (score > 1) score = 1;
     return score;
@@ -175,7 +192,6 @@
 
     var rawMouth = getMouthOpenRatio(landmarks);
     var rawSmile = getSmileRatio(landmarks);
-    // Prefer noseSneer + mouthUpperUp (nasolabial) when blendshapes exist
     var rawFrown = getFrownRatio(landmarks, blendShapeMap);
     var rawEyes = getEyesClosedRatio(landmarks);
 
@@ -236,5 +252,5 @@
   window.AS_Geometry = api;
   window.AS_BrokeAss = api;
 
-  console.log('[geometry] Ready — frown = nasolabial (noseSneer + mouthUpperUp, zero-based)');
+  console.log('[geometry] Ready — frown = lower lip press / chin raise');
 })();
