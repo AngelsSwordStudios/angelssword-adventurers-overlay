@@ -45,13 +45,36 @@
     }
   }
 
+  /**
+   * Frown / sad 0–1
+   * Primary: inner-brow raise (concerned / sad brows)
+   * Secondary: slight mouth-corner down
+   * (no pure brow-drop)
+   */
   function getFrownRatio(landmarks) {
     try {
-      var browY = (landmarks[55].y + landmarks[285].y) / 2;
+      // --- Inner brow raise (landmarks 107 / 336) ---
+      // y increases downward; raised brow → smaller y → larger (eyeTop - brow)
+      var leftInnerY = landmarks[107].y;
+      var rightInnerY = landmarks[336].y;
+      var innerBrowY = (leftInnerY + rightInnerY) / 2;
       var eyeTopY = (landmarks[159].y + landmarks[386].y) / 2;
-      var browDrop = Math.max(0, browY - eyeTopY + 0.025);
-      var browFrown = Math.min(browDrop * 14.0, 1.0);
+      var absoluteInnerRaise = Math.max(0, eyeTopY - innerBrowY);
 
+      // Prefer inner raised relative to outer brow (classic sad AU1 shape)
+      var leftOuterY = landmarks[70].y;
+      var rightOuterY = landmarks[300].y;
+      var outerBrowY = (leftOuterY + rightOuterY) / 2;
+      // When inner is higher than outer, outerY - innerY > 0
+      var relativeInnerUp = Math.max(0, outerBrowY - innerBrowY);
+
+      // Blend absolute + relative so neutral faces stay low
+      var innerBrow = Math.min(
+        1.0,
+        absoluteInnerRaise * 9.0 * 0.55 + relativeInnerUp * 18.0 * 0.45
+      );
+
+      // --- Slight mouth corner down (inverse smile) ---
       var leftCorner = landmarks[61];
       var rightCorner = landmarks[291];
       var upperLip = landmarks[13];
@@ -59,9 +82,11 @@
       var mouthCenterY = (upperLip.y + lowerLip.y) / 2;
       var cornerY = (leftCorner.y + rightCorner.y) / 2;
       var cornerDown = Math.max(0, cornerY - mouthCenterY);
-      var mouthFrown = Math.min(cornerDown * 12.0, 1.0);
+      // Softer scale than smile so mouth is only a slight contribution
+      var mouthFrown = Math.min(cornerDown * 10.0, 1.0);
 
-      return Math.min(1.0, browFrown * 0.55 + mouthFrown * 0.45);
+      // ~70% inner brow · ~30% mouth corners
+      return Math.min(1.0, innerBrow * 0.70 + mouthFrown * 0.30);
     } catch (e) {
       return 0;
     }
@@ -154,6 +179,8 @@
     blendShapeMap.browOuterUpLeft = m;
     blendShapeMap.browOuterUpRight = m;
 
+    // Frown channels still stuffed so server composite = frownScore
+    // (gain already applied above — same path as other emotions)
     var f = frownScore;
     blendShapeMap.browDownLeft = f;
     blendShapeMap.browDownRight = f;
@@ -178,8 +205,7 @@
   };
 
   window.AS_Geometry = api;
-  // Legacy alias (old scripts)
   window.AS_BrokeAss = api;
 
-  console.log('[geometry] Ready — smile + frown + surprised + eyes');
+  console.log('[geometry] Ready — frown = inner-brow raise + slight mouth-corner down');
 })();
