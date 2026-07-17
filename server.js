@@ -22,6 +22,7 @@ const VTS_RECV_PORT = 11125;   // Port to RECEIVE tracking data from VTS
 const IFACIAL_PORT = 49983;
 let DEBUG_UDP = false;         // set true to log raw UDP packets
 const DEBUG_EXPR = false;      // set true to log expression transitions
+const DEBUG_WS = false;        // set true to log websocket connect/disconnect
 const ASSETS_DIR = path.join(APP_DIR, 'public', 'assets');
 
 // Ensure assets directory exists
@@ -490,7 +491,7 @@ wss.on('connection', (ws, req) => {
   ws._msgCount = 0;
   ws._msgResetTime = Date.now();
   clients.add(ws);
-  console.log(`[ws] ${clientType} connected (${clients.size} total)`);
+  if (DEBUG_WS) console.log(`[ws] ${clientType} connected (${clients.size} total)`);
 
   ws.on('message', (data) => {
     try {
@@ -521,7 +522,7 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     clients.delete(ws);
-    console.log(`[ws] ${clientType} disconnected (${clients.size} total)`);
+    if (DEBUG_WS) console.log(`[ws] ${clientType} disconnected (${clients.size} total)`);
   });
 
   ws.on('pong', () => { ws.isAlive = true; });
