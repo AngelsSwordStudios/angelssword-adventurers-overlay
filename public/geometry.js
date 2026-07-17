@@ -46,47 +46,66 @@
   }
 
   /**
-   * Frown / sad 0–1
-   * Primary: inner-brow raise (concerned / sad brows)
-   * Secondary: slight mouth-corner down
-   * (no pure brow-drop)
+   * Frown 0–1 via nasolabial-fold deepen.
+   * Measures how the crease region (nose wing → fold → mouth corner)
+   * pulls in / deepens vs a relaxed face.
    */
   function getFrownRatio(landmarks) {
     try {
-      // --- Inner brow raise (landmarks 107 / 336) ---
-      // y increases downward; raised brow → smaller y → larger (eyeTop - brow)
-      var leftInnerY = landmarks[107].y;
-      var rightInnerY = landmarks[336].y;
-      var innerBrowY = (leftInnerY + rightInnerY) / 2;
-      var eyeTopY = (landmarks[159].y + landmarks[386].y) / 2;
-      var absoluteInnerRaise = Math.max(0, eyeTopY - innerBrowY);
+      var faceH = Math.abs(landmarks[10].y - landmarks[152].y);
+      if (!(faceH > 1e-6)) return 0;
 
-      // Prefer inner raised relative to outer brow (classic sad AU1 shape)
-      var leftOuterY = landmarks[70].y;
-      var rightOuterY = landmarks[300].y;
-      var outerBrowY = (leftOuterY + rightOuterY) / 2;
-      // When inner is higher than outer, outerY - innerY > 0
-      var relativeInnerUp = Math.max(0, outerBrowY - innerBrowY);
+      /**
+       * Per-side nasolabial score.
+       * noseIdx  — nose wing (48 left / 278 right)
+       * foldIdx  — crease mid region (205 left / 425 right)
+       * cornerIdx — mouth corner (61 left / 291 right)
+       * cheekIdx — outer cheek for width ref (234 left / 454 right)
+       */
+      function sideScore(noseIdx, foldIdx, cornerIdx, cheekIdx) {
+        var nose = landmarks[noseIdx];
+        var fold = landmarks[foldIdx];
+        var corner = landmarks[cornerIdx];
+        var cheek = landmarks[cheekIdx];
 
-      // Blend absolute + relative so neutral faces stay low
-      var innerBrow = Math.min(
-        1.0,
-        absoluteInnerRaise * 9.0 * 0.55 + relativeInnerUp * 18.0 * 0.45
-      );
+        // 1) Medial pull: fold moves toward nose vs outer cheek span
+        var halfW = Math.abs(cheek.x - nose.x);
+        if (!(halfW > 1e-6)) halfW = 1e-6;
+        var foldFromNose = Math.abs(fold.x - nose.x);
+        // Higher when fold sits closer to the nose (crease pulled in)
+        var medial = Math.max(0, Math.min(1, 1 - foldFromNose / halfW));
 
-      // --- Slight mouth corner down (inverse smile) ---
-      var leftCorner = landmarks[61];
-      var rightCorner = landmarks[291];
-      var upperLip = landmarks[13];
-      var lowerLip = landmarks[14];
-      var mouthCenterY = (upperLip.y + lowerLip.y) / 2;
-      var cornerY = (leftCorner.y + rightCorner.y) / 2;
-      var cornerDown = Math.max(0, cornerY - mouthCenterY);
-      // Softer scale than smile so mouth is only a slight contribution
-      var mouthFrown = Math.min(cornerDown * 10.0, 1.0);
+        // 2) How tightly fold sits on the nose→mouth-corner chord
+        //    (deeper fold → landmark sits closer to that path)
+        var dx = corner.x - nose.x;
+        var dy = corner.y - nose.y;
+        var len2 = dx * dx + dy * dy;
+        if (len2 < 1e-12) return 0;
+        var t = ((fold.x - nose.x) * dx + (fold.y - nose.y) * dy) / len2;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        var projX = nose.x + t * dx;
+        var projY = nose.y + t * dy;
+        var dist = Math.hypot(fold.x - projX, fold.y - projY);
+        // Typical relaxed dist is a few % of face height; clamp to 0–1
+        var onLine = Math.max(0, Math.min(1, 1 - (dist / faceH) * 10));
 
-      // ~70% inner brow · ~30% mouth corners
-      return Math.min(1.0, innerBrow * 0.70 + mouthFrown * 0.30);
+        // 3) Vertical tension: upper-lip / fold area lifts toward nose
+        //    (common with nasolabial activation / displeasure)
+        var midY = (nose.y + corner.y) / 2;
+        var verticalPull = Math.max(0, (midY - fold.y) / faceH);
+        var vert = Math.min(1, verticalPull * 14);
+
+        return medial * 0.40 + onLine * 0.35 + vert * 0.25;
+      }
+
+      // Left / right nasolabial regions
+      var left = sideScore(48, 205, 61, 234);
+      var right = sideScore(278, 425, 291, 454);
+      var avg = (left + right) / 2;
+
+      // Mild boost so a clear deepen reaches the top of the meter
+      return Math.min(1.0, avg * 1.25);
     } catch (e) {
       return 0;
     }
@@ -179,8 +198,8 @@
     blendShapeMap.browOuterUpLeft = m;
     blendShapeMap.browOuterUpRight = m;
 
-    // Frown channels still stuffed so server composite = frownScore
-    // (gain already applied above — same path as other emotions)
+    // Frown channels stuffed so server composite = frownScore
+    // (gain already applied — same path as other emotions)
     var f = frownScore;
     blendShapeMap.browDownLeft = f;
     blendShapeMap.browDownRight = f;
@@ -207,5 +226,5 @@
   window.AS_Geometry = api;
   window.AS_BrokeAss = api;
 
-  console.log('[geometry] Ready — frown = inner-brow raise + slight mouth-corner down');
+  console.log('[geometry] Ready — frown = nasolabial deepen');
 })();
