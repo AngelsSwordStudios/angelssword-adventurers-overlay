@@ -26,12 +26,19 @@
   const wsUrl = `ws://${location.host}?type=control`;
   let ws = null;
 
+  window.ASAPluginHost?.setPluginSender(message => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify(message));
+    return true;
+  });
+
   function connectWS() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       document.getElementById('ws-status').classList.add('connected');
       document.getElementById('ws-status-text').textContent = 'Connected';
+      window.ASAPluginHost?.notifyTransportOpen();
       // Send current settings on (re)connect
       const currentSettings = loadSettings();
       const vol = currentSettings.sfxMuted ? 0 : (currentSettings.sfxVolume !== undefined ? currentSettings.sfxVolume / 100 : 1);
@@ -66,6 +73,7 @@
     };
 
     ws.onclose = () => {
+      window.ASAPluginHost?.notifyTransportClosed();
       document.getElementById('ws-status').classList.remove('connected');
       document.getElementById('ws-status-text').textContent = 'Disconnected';
       setTimeout(connectWS, 3000);
@@ -932,6 +940,11 @@
       micSource.connect(highPass);
       highPass.connect(micAnalyser);
 
+      window.ASAPluginHost?.setAudioInput({
+        audioContext: micAudioCtx,
+        sourceNode: micSource
+      });
+
       micActive = true;
       micDataArray = new Uint8Array(micAnalyser.frequencyBinCount);
       saveSettings({ micDeviceId: micSelect.value });
@@ -965,6 +978,7 @@
 
   function stopMic() {
     micActive = false;
+    window.ASAPluginHost?.clearAudioInput();
     if (micWorker) { micWorker.postMessage('stop'); micWorker.terminate(); micWorker = null; }
     if (micInterval) { clearInterval(micInterval); micInterval = null; }
     if (micStream) {

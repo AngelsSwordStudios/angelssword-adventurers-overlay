@@ -4,6 +4,8 @@ const { WebSocketServer } = require('ws');
 const dgram = require('dgram');
 const path = require('path');
 const fs = require('fs');
+const { discoverPlugins } = require('./lib/plugin-registry');
+const { createPluginEventState } = require('./lib/plugin-event-state');
 
 // When compiled with pkg, __dirname points to a virtual snapshot filesystem.
 // Use the exe's real directory for static files (public/, assets/).
@@ -21,7 +23,9 @@ const VTS_SEND_PORT = 21412;   // Port to SEND requests to VTS iPhone
 const VTS_RECV_PORT = 11125;   // Port to RECEIVE tracking data from VTS
 const IFACIAL_PORT = 49983;
 let DEBUG_UDP = true;          // Log raw UDP packets for debugging
-const ASSETS_DIR = path.join(APP_DIR, 'public', 'assets');
+const PUBLIC_DIR = path.join(APP_DIR, 'public');
+const ASSETS_DIR = path.join(PUBLIC_DIR, 'assets');
+const INSTALLED_PLUGINS = discoverPlugins(PUBLIC_DIR);
 
 // Ensure assets directory exists
 if (!fs.existsSync(ASSETS_DIR)) {
@@ -29,8 +33,12 @@ if (!fs.existsSync(ASSETS_DIR)) {
 }
 
 // ── Serve static files ──────────────────────────────
-app.use(express.static(path.join(APP_DIR, 'public')));
+app.use(express.static(PUBLIC_DIR));
 app.use(express.json({ limit: '16kb' }));
+
+app.get('/api/plugins', (req, res) => {
+  res.json(INSTALLED_PLUGINS);
+});
 
 // ── Shared: state names and extensions ──────────────
 const STATE_NAMES = [
@@ -41,8 +49,18 @@ const STATE_NAMES = [
   'typing',
   'eyes_closed'
 ];
+STATE_NAMES.push(...INSTALLED_PLUGINS.flatMap(plugin => plugin.assetStates));
 const ASSET_EXTENSIONS = ['.webm', '.webp', '.gif', '.png', '.mp4'];
 const SOUND_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.m4a'];
+
+function isValidPluginEvent(message) {
+  return (
+    message?.type === 'plugin_event' &&
+    typeof message.pluginId === 'string' &&
+    typeof message.event === 'string' &&
+    INSTALLED_PLUGINS.some(plugin => plugin.id === message.pluginId)
+  );
+}
 
 let activeModel = 'Default'; // Current model name
 let activeEmote = null;      // Currently active emote
@@ -464,6 +482,7 @@ app.post('/api/emote/sub', (req, res) => {
 
 // ── WebSocket connections ───────────────────────────
 const clients = new Set();
+const pluginEventState = createPluginEventState();
 
 wss.on('connection', (ws, req) => {
   // Connection limit
@@ -489,6 +508,9 @@ wss.on('connection', (ws, req) => {
   ws._msgCount = 0;
   ws._msgResetTime = Date.now();
   clients.add(ws);
+  if (clientType === 'overlay') {
+    pluginEventState.replay(message => ws.send(JSON.stringify(message)));
+  }
   console.log(`[ws] ${clientType} connected (${clients.size} total)`);
 
   ws.on('message', (data) => {
@@ -502,6 +524,10 @@ wss.on('connection', (ws, req) => {
       // Control panel sending data → forward to overlays
       if (ws.clientType === 'control') {
         if (msg.type === 'expression' || msg.type === 'speaking' || msg.type === 'config' || msg.type === 'emote' || msg.type === 'state_override') {
+          broadcast(msg, 'overlay');
+        }
+        if (isValidPluginEvent(msg)) {
+          pluginEventState.remember(msg);
           broadcast(msg, 'overlay');
         }
         // Webcam tracking: process through the same pipeline as VTS/iFacial
