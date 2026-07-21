@@ -169,6 +169,22 @@ Emotes support **variants** — `intro.webm`, `intro2.webm`, `intro3.webm` play 
 
 ---
 
+## External Integrations
+
+Local integrations can connect to `ws://127.0.0.1:3000/?type=plugin` to receive
+animation lifecycle messages. Phases include `idle`, `playing`, `entering`,
+`held`, `sub_playing`, and `exiting`.
+
+Use `GET /api/animation/status` to recover current state after reconnecting and
+`POST /api/emote/toggle` to start an emote or release the currently held Type 2
+emote. Conflicting animation requests return HTTP `409` rather than replacing
+active playback.
+
+These endpoints are optional extension hooks and do not change normal control
+panel or OBS overlay behavior.
+
+---
+
 ## Building a Release
 
 To create a standalone EXE distribution (no Node.js required for end users):

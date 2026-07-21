@@ -33,9 +33,20 @@
   // ── Emote State ────────────────────────────────
   let emoteState = 'inactive'; // inactive | intro | active | outro
   let activeEmote = null;
+  let activeRequestId = null;
   let subStack = [];             // Stack of active sub-animations (deepest = last)
   let subAnimPlaying = false;  // True while sub one-shot animation is playing
   let emoteGifTimeout = null;
+
+  function reportAnimationState(phase, reason = null) {
+    if (!activeRequestId || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+      type: 'animation_state',
+      phase,
+      reason,
+      requestId: activeRequestId
+    }));
+  }
 
   // ── DOM refs ────────────────────────────────────
   const layers = {};
@@ -109,7 +120,7 @@
       if (layer) layer.innerHTML = '';
     }
     // Also clear any active emote
-    clearEmote();
+    clearEmote(false, 'cancelled');
     // Reset state so updateDisplay re-activates the right layer
     currentStateKey = null;
   }
@@ -312,16 +323,17 @@
     subIdleNodes = [];
   }
 
-  function handleEmoteTrigger(emote) {
-    if (emoteState !== 'inactive') clearEmote(true); // true = skip deferred layer clear (we're about to load new content)
+  function handleEmoteTrigger(emote, requestId) {
+    if (emoteState !== 'inactive') clearEmote(true, 'cancelled'); // true = skip deferred layer clear (we're about to load new content)
     activeEmote = emote;
+    activeRequestId = requestId || null;
     const files = emote.files || {};
 
     if (emote.emoteType === 1) {
       // Type 1: one-shot animation
       emoteState = 'active';
       const url = files.animation;
-      if (!url) { clearEmote(); return; }
+      if (!url) { clearEmote(false, 'failed'); return; }
 
       // Play animation sound effect
       playSound(files.animation_sound);
@@ -333,13 +345,14 @@
         el.addEventListener('ended', () => clearEmote(), { once: true });
         // Wait for first frame before showing emote layer
         el.addEventListener('loadeddata', () => {
+          reportAnimationState('playing');
           emoteLayer.classList.add('active');
           updateDisplay();
         }, { once: true });
       } else {
         // GIF/image: show on load, auto-clear after duration (default 3s)
         emoteGifTimeout = setTimeout(() => clearEmote(), emote.duration || 3000);
-        el.onload = () => { emoteLayer.classList.add('active'); updateDisplay(); };
+        el.onload = () => { reportAnimationState('playing'); emoteLayer.classList.add('active'); updateDisplay(); };
       }
       console.log(`[emote] Type 1 trigger: ${emote.name}`);
 
@@ -394,6 +407,7 @@
 
         // Wait for first frame before showing
         const activate = () => {
+          reportAnimationState('entering');
           emoteLayer.classList.add('active');
           updateDisplay();
         };
@@ -404,14 +418,20 @@
           el.onload = activate;
         }
 
-        el.addEventListener('ended', () => {
+        const finishIntro = () => {
           if (emoteState !== 'intro') return; // was cancelled
           emoteState = 'active';
           preloads.length = 0; // Release preload references
           const idleUrl = isSpeaking && files.speaking ? files.speaking : (files.idle || files.animation);
           if (idleUrl) loadEmoteAsset(idleUrl, true);
+          reportAnimationState('held');
           console.log(`[emote] Intro ended, entering idle loop`);
-        }, { once: true });
+        };
+        if (['webm', 'mp4'].includes(ext)) {
+          el.addEventListener('ended', finishIntro, { once: true });
+        } else {
+          setTimeout(finishIntro, emote.duration || 3000);
+        }
 
         const varCount = files.intro_variants?.length || 1;
         console.log(`[emote] Type 2 trigger with intro: ${emote.name} (variant ${introPick.idx + 1}/${varCount})`);
@@ -424,12 +444,15 @@
           const ext = idleUrl.split('.').pop().toLowerCase();
           if (['webm', 'mp4'].includes(ext)) {
             el.addEventListener('loadeddata', () => {
+              reportAnimationState('held');
               emoteLayer.classList.add('active');
               updateDisplay();
             }, { once: true });
           } else {
-            el.onload = () => { emoteLayer.classList.add('active'); updateDisplay(); };
+            el.onload = () => { reportAnimationState('held'); emoteLayer.classList.add('active'); updateDisplay(); };
           }
+        } else {
+          reportAnimationState('held');
         }
         console.log(`[emote] Type 2 trigger (no intro): ${emote.name}`);
       }
@@ -439,6 +462,7 @@
   function handleEmoteRelease() {
     if (emoteState === 'inactive') return;
     const files = activeEmote?.files || {};
+    reportAnimationState('exiting');
 
     // Helper: pick a random variant
     const pickVar = (variants, fallback) => {
@@ -462,7 +486,12 @@
         const outroSnd = pickSndByIdx(outroFiles.outro_sound_variants, outroFiles.outro_sound, outroPick.idx);
         if (outroSnd) playSound(outroSnd);
         const el = loadEmoteAsset(outroPick.url, false);
-        el.addEventListener('ended', onDone, { once: true });
+        const ext = outroPick.url.split('.').pop().toLowerCase();
+        if (['webm', 'mp4'].includes(ext)) {
+          el.addEventListener('ended', onDone, { once: true });
+        } else {
+          setTimeout(onDone, 3000);
+        }
         return true;
       }
       return false;
@@ -482,8 +511,8 @@
         }
       } else {
         // Stack empty — play parent outro or clear
-        if (!playOutro(files, () => clearEmote())) {
-          clearEmote();
+        if (!playOutro(files, () => clearEmote(false, 'released'))) {
+          clearEmote(false, 'released');
         } else {
           console.log(`[emote] Playing parent outro`);
         }
@@ -493,10 +522,12 @@
     unwindStack();
   }
 
-  function clearEmote(skipLayerClear = false) {
+  function clearEmote(skipLayerClear = false, reason = 'ended') {
+    reportAnimationState('idle', reason);
     if (emoteGifTimeout) { clearTimeout(emoteGifTimeout); emoteGifTimeout = null; }
     emoteState = 'inactive';
     activeEmote = null;
+    activeRequestId = null;
     stopAllSounds();
     subStack = [];
     subAnimPlaying = false;
@@ -573,6 +604,7 @@
 
     // Toggle: if same sub is on top of stack, pop it (return to parent idle)
     if (activeSub && activeSub.name === sub.name) {
+      reportAnimationState('sub_playing');
       stopAllSounds();
       stopSubIdleAudio();
 
@@ -587,14 +619,22 @@
       if (outroPick?.url) {
         subAnimPlaying = true;
         const el = loadEmoteAsset(outroPick.url, false);
-        el.addEventListener('ended', () => {
+        const finishSubOutro = () => {
           subAnimPlaying = false;
           if (emoteState !== 'active' || !activeEmote) return;
           returnToParentIdle();
+          reportAnimationState('held');
           console.log(`[emote] Sub outro done, returned to parent idle (stack depth: ${subStack.length})`);
-        }, { once: true });
+        };
+        const ext = outroPick.url.split('.').pop().toLowerCase();
+        if (['webm', 'mp4'].includes(ext)) {
+          el.addEventListener('ended', finishSubOutro, { once: true });
+        } else {
+          setTimeout(finishSubOutro, 2000);
+        }
       } else {
         returnToParentIdle();
+        reportAnimationState('held');
       }
       console.log(`[emote] Deactivating sub: ${sub.name} (stack depth: ${subStack.length})`);
       return;
@@ -606,6 +646,7 @@
     const hasSubIdle = !!(sub.files?.idle);
 
     if (!url && !hasSubIdle) return;
+    reportAnimationState('sub_playing');
 
     // Play sound effect
     const introSound = animPick
@@ -636,6 +677,7 @@
         returnToParentIdle();
         console.log(`[emote] Sub-animation ended, returning to parent idle`);
       }
+      reportAnimationState('held');
     };
 
     if (url) {
@@ -886,7 +928,7 @@
           updateDisplay();
         } else if (data.type === 'emote') {
           if (data.action === 'trigger' && data.emote) {
-            handleEmoteTrigger(data.emote);
+            handleEmoteTrigger(data.emote, data.requestId);
           } else if (data.action === 'release') {
             handleEmoteRelease();
           } else if (data.action === 'sub' && data.sub) {
