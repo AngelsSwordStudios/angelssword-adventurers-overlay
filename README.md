@@ -37,6 +37,7 @@ On top of expressions, you can trigger **emotes** from the control panel — one
 - **Voice detection** — microphone input with adjustable threshold
 - **Typing detection** — keyboard activity triggers a typing animation
 - **Multiple models** — switch characters on the fly from the control panel
+- **Optional browser plugins** — install local control and overlay extensions without patching application files
 - **Emote system** — one-shot, held, and nested sub-animation emotes with sound effects
 - **Tunable thresholds** — smile sensitivity, expression hold, hysteresis, exit bias, transition speed
 - **Crossfade / blur-pop transitions** — configurable swap animation between expression states
@@ -144,6 +145,13 @@ Emotes support **variants** — `intro.webm`, `intro2.webm`, `intro3.webm` play 
 1. Select your mic from the dropdown in the Control Panel
 2. Click **Enable Microphone**
 3. Keep the Control Panel tab open while streaming
+
+### Browser Plugins
+
+Local browser plugins can add control-panel UI, consume the selected microphone,
+relay plugin events to the overlay, and register additional model states. Install
+them under `public/plugins/` and restart AS Adventurer. See
+[`docs/plugins.md`](docs/plugins.md) for the manifest and host API.
 
 ---
 
