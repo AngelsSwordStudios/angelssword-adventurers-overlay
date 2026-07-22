@@ -188,17 +188,20 @@
     try {
       const a = new Audio(url);
       a.volume = sfxVolume;
-      a.addEventListener('ended', () => {
+      const removeActiveSound = () => {
         const idx = activeSounds.indexOf(a);
         if (idx !== -1) activeSounds.splice(idx, 1);
-      }, { once: true });
+      };
+      a.addEventListener('ended', removeActiveSound, { once: true });
       // Clean up if audio fails to load/play
-      a.addEventListener('error', () => {
-        const idx = activeSounds.indexOf(a);
-        if (idx !== -1) activeSounds.splice(idx, 1);
-      }, { once: true });
+      a.addEventListener('error', removeActiveSound, { once: true });
       activeSounds.push(a);
-      a.play().catch(() => {});
+      a.play().catch(() => {
+        a.pause();
+        a.removeAttribute('src');
+        a.load();
+        removeActiveSound();
+      });
     } catch (e) { /* ignore */ }
   }
 
