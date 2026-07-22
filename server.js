@@ -795,7 +795,33 @@ function getCurrentExpressionScore(data, expr) {
 
 // ── UDP: iFacialMocap listener ──────────────────────
 // Helper: process any received blend shape data
+const MAX_UDP_PACKETS_PER_SECOND = 240;
 let keysDumped = {};  // Track per-source: { vtube_studio: true, ifacialmocap: true }
+const trackingSourceIPs = { vtube_studio: null, ifacialmocap: null };
+const udpRateLimits = {
+  vtube_studio: { windowStart: 0, count: 0 },
+  ifacialmocap: { windowStart: 0, count: 0 }
+};
+
+function setTrackingSourceIP(source, address) {
+  trackingSourceIPs[source] = address;
+  udpRateLimits[source] = { windowStart: Date.now(), count: 0 };
+}
+
+function allowTrackingPacket(source, rinfo) {
+  if (rinfo.address !== trackingSourceIPs[source]) return false;
+
+  const now = Date.now();
+  const rate = udpRateLimits[source];
+  if (now - rate.windowStart >= 1000) {
+    rate.windowStart = now;
+    rate.count = 0;
+  }
+  if (rate.count >= MAX_UDP_PACKETS_PER_SECOND) return false;
+  rate.count++;
+  return true;
+}
+
 function handleTrackingData(msg, source) {
   const str = msg.toString('utf-8');
 
@@ -838,6 +864,7 @@ function handleTrackingData(msg, source) {
 let ifacialPacketCount = 0;
 const ifacialSocket = dgram.createSocket('udp4');
 ifacialSocket.on('message', (msg, rinfo) => {
+  if (!allowTrackingPacket('ifacialmocap', rinfo)) return;
   ifacialPacketCount++;
   if (ifacialPacketCount <= 3 || ifacialPacketCount % 1800 === 0) {
     console.log(`[udp] iFacialMocap packet #${ifacialPacketCount} from ${rinfo.address}:${rinfo.port} (${msg.length} bytes)`);
@@ -861,6 +888,7 @@ let vtsKeepAliveInterval = null;
 let vtsPacketCount = 0;
 
 vtsRecvSocket.on('message', (msg, rinfo) => {
+  if (!allowTrackingPacket('vtube_studio', rinfo)) return;
   vtsPacketCount++;
   if (vtsPacketCount <= 3 || vtsPacketCount % 300 === 0) {
     console.log(`[udp] VTS packet #${vtsPacketCount} from ${rinfo.address}:${rinfo.port} (${msg.length} bytes)`);
@@ -882,6 +910,7 @@ try {
 let vtsSendPacketCount = 0;
 const vtsSendSocket = dgram.createSocket('udp4');
 vtsSendSocket.on('message', (msg, rinfo) => {
+  if (!allowTrackingPacket('vtube_studio', rinfo)) return;
   vtsSendPacketCount++;
   if (vtsSendPacketCount <= 3 || vtsSendPacketCount % 300 === 0) {
     console.log(`[udp] VTS data on SEND port from ${rinfo.address}:${rinfo.port} (${msg.length} bytes)`);
@@ -925,6 +954,7 @@ app.post('/api/connect-vts', (req, res) => {
       return res.status(500).json({ error: 'failed to connect to VTube Studio' });
     }
 
+    setTrackingSourceIP('vtube_studio', phoneIP);
     console.log(`[vts] ✓ Request sent to ${phoneIP}:${VTS_SEND_PORT}`);
 
     // Keep-alive: re-request every 4s (VTS streams expire after 'time' seconds)
@@ -955,6 +985,7 @@ app.post('/api/connect-ifacial', (req, res) => {
   // would be sent back to that random (now closed) port — going nowhere.
   ifacialSocket.send(handshake, IFACIAL_PORT, phoneIP, (err) => {
     if (err) return res.status(500).json({ error: 'failed to connect to iFacialMocap' });
+    setTrackingSourceIP('ifacialmocap', phoneIP);
     console.log(`[ifm] Handshake sent to ${phoneIP}:${IFACIAL_PORT} (from port ${IFACIAL_PORT})`);
     res.json({ success: true, message: `Connected to ${phoneIP}` });
   });
