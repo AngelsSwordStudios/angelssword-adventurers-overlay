@@ -149,13 +149,26 @@
       emoteLayer.appendChild(video);
 
       // Remove old content once first frame is ready
-      video.addEventListener('loadeddata', removeOld, { once: true });
+      const handleVideoLoaded = () => {
+        video.removeEventListener('loadeddata', handleVideoLoaded);
+        video.removeEventListener('error', handleVideoError);
+        removeOld();
+      };
+      const handleVideoError = () => {
+        video.removeEventListener('loadeddata', handleVideoLoaded);
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        video.remove();
+      };
+      video.addEventListener('loadeddata', handleVideoLoaded, { once: true });
+      video.addEventListener('error', handleVideoError, { once: true });
       // Fallback: only remove old if new video has actually loaded.
       // On cold cache the new video may take >150ms to fetch — don't
       // yank the old content out from under it, let loadeddata handle it.
       setTimeout(() => {
         if (oldChildren[0]?.parentElement && video.readyState >= 2) {
-          removeOld();
+          handleVideoLoaded();
         }
       }, 150);
 
@@ -167,10 +180,22 @@
       applyAbsoluteStyles(img);
 
       emoteLayer.appendChild(img);
-      img.onload = removeOld;
+      const handleImageLoaded = () => {
+        img.onload = null;
+        img.onerror = null;
+        removeOld();
+      };
+      const handleImageError = () => {
+        img.onload = null;
+        img.onerror = null;
+        img.removeAttribute('src');
+        img.remove();
+      };
+      img.onload = handleImageLoaded;
+      img.onerror = handleImageError;
       setTimeout(() => {
         if (oldChildren[0]?.parentElement && img.complete && img.naturalWidth > 0) {
-          removeOld();
+          handleImageLoaded();
         }
       }, 150);
 
