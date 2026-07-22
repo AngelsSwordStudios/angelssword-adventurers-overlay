@@ -951,7 +951,12 @@
       const workerBlob = new Blob([
         `let tid; onmessage = e => { if (e.data === 'start') { tid = setInterval(() => postMessage('tick'), 33); } else if (e.data === 'stop') { clearInterval(tid); } };`
       ], { type: 'application/javascript' });
-      micWorker = new Worker(URL.createObjectURL(workerBlob));
+      const workerUrl = URL.createObjectURL(workerBlob);
+      try {
+        micWorker = new Worker(workerUrl);
+      } finally {
+        URL.revokeObjectURL(workerUrl);
+      }
       micWorker.onmessage = () => processMicFrame();
       micWorker.postMessage('start');
       console.log(`[mic] Started: ${activeLabel} (Web Worker timer @ 33ms)`);
