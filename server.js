@@ -20,6 +20,7 @@ let PORT = PREFERRED_PORT;
 const VTS_SEND_PORT = 21412;   // Port to SEND requests to VTS iPhone
 const VTS_RECV_PORT = 11125;   // Port to RECEIVE tracking data from VTS
 const IFACIAL_PORT = 49983;
+const MAX_WS_BUFFERED_BYTES = 1024 * 1024; // Disconnect clients with more than 1MB queued
 let DEBUG_UDP = true;          // Log raw UDP packets for debugging
 const ASSETS_DIR = path.join(APP_DIR, 'public', 'assets');
 
@@ -401,9 +402,7 @@ app.post('/api/models/select', (req, res) => {
 
   // Broadcast model change to all overlay clients
   for (const client of clients) {
-    if (client.readyState === 1) {
-      client.send(JSON.stringify({ type: 'model_change', model: activeModel }));
-    }
+    sendToClient(client, JSON.stringify({ type: 'model_change', model: activeModel }));
   }
 
   res.json({ success: true, active: activeModel });
@@ -538,8 +537,8 @@ setInterval(() => {
 function broadcast(data, targetType) {
   const msg = JSON.stringify(data);
   for (const client of clients) {
-    if (client.readyState === 1 && (!targetType || client.clientType === targetType)) {
-      client.send(msg);
+    if (!targetType || client.clientType === targetType) {
+      sendToClient(client, msg);
     }
   }
 }
@@ -548,8 +547,20 @@ function broadcast(data, targetType) {
 function broadcastAll(data) {
   const msg = JSON.stringify(data);
   for (const client of clients) {
-    if (client.readyState === 1) client.send(msg);
+    sendToClient(client, msg);
   }
+}
+
+function sendToClient(client, message) {
+  if (client.readyState !== 1) return false;
+  if (client.bufferedAmount >= MAX_WS_BUFFERED_BYTES) {
+    console.warn(`[ws] Disconnecting slow ${client.clientType || 'unknown'} client (${client.bufferedAmount} bytes queued)`);
+    clients.delete(client);
+    client.terminate();
+    return false;
+  }
+  client.send(message);
+  return true;
 }
 
 // ── Expression Detection ────────────────────────────
