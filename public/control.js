@@ -250,17 +250,16 @@
   }
 
   async function loadMediaPipe() {
-    // Dynamically load MediaPipe vision module
-    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs');
+    const vision = await import('/vendor/mediapipe/vision_bundle.mjs');
     const { FaceLandmarker, FilesetResolver } = vision;
 
     const filesetResolver = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      '/vendor/mediapipe/wasm'
     );
 
     faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
       baseOptions: {
-        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+        modelAssetPath: '/vendor/mediapipe/models/face_landmarker.task',
         delegate: 'GPU'
       },
       runningMode: 'VIDEO',

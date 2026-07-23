@@ -29,6 +29,42 @@ if (!fs.existsSync(ASSETS_DIR)) {
 }
 
 // ── Serve static files ──────────────────────────────
+// The hash allows the sole inline script in public/generate-test-assets.html.
+const CONTENT_SECURITY_POLICY_DIRECTIVES = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval' 'sha256-caAUX4IsIGdFRM0Goz9Gv+6glrZRoDOH2je2iLzKP/Y='",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "media-src 'self' data: blob:",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'"
+];
+
+function getWebSocketSources(hostname) {
+  if (typeof hostname !== 'string' || hostname.length === 0) return '';
+
+  const unwrapped = hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+  const isIpv6 = unwrapped.includes(':');
+  const valid = isIpv6
+    ? /^[0-9a-f:.]+$/i.test(unwrapped)
+    : /^[a-z0-9.-]+$/i.test(unwrapped);
+  if (!valid) return '';
+
+  const host = isIpv6 ? `[${unwrapped}]` : unwrapped;
+  return ` ws://${host}:* wss://${host}:*`;
+}
+
+app.use((req, res, next) => {
+  const connectSrc = `connect-src 'self'${getWebSocketSources(req.hostname)}`;
+  const policy = [...CONTENT_SECURITY_POLICY_DIRECTIVES, connectSrc].join('; ');
+  res.setHeader('Content-Security-Policy', policy);
+  next();
+});
 app.use(express.static(path.join(APP_DIR, 'public')));
 app.use(express.json({ limit: '16kb' }));
 
