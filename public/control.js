@@ -657,14 +657,17 @@
           const isActive = activeSubPath[depth] === sub.name;
           if (isActive) btn.classList.add('sub-active');
 
-          btn.innerHTML = `⚡ ${sub.name}`;
+          btn.textContent = `⚡ ${sub.name}`;
 
           const badges = [];
           if (sub.files.sound) badges.push('🔊');
           if (sub.files.idle) badges.push('🔄');
           if (sub.subs && sub.subs.length > 0) badges.push(`📂 ${sub.subs.length}`);
           if (badges.length > 0) {
-            btn.innerHTML += `<span class="emote-type">${badges.join(' ')}</span>`;
+            const badge = document.createElement('span');
+            badge.className = 'emote-type';
+            badge.textContent = badges.join(' ');
+            btn.appendChild(badge);
           }
 
           const apiPath = pathPrefix ? `${pathPrefix}/${sub.name}` : sub.name;
@@ -726,7 +729,11 @@
         const btn = document.createElement('button');
         btn.className = 'emote-btn';
         btn.dataset.emoteName = emote.name;
-        btn.innerHTML = `${emote.name}<span class="emote-type">Type ${emote.emoteType}</span>`;
+        btn.textContent = emote.name;
+        const type = document.createElement('span');
+        type.className = 'emote-type';
+        type.textContent = `Type ${emote.emoteType}`;
+        btn.appendChild(type);
 
         if (emote.emoteType === 1) {
           // Type 1: click to trigger (one-shot)
